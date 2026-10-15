@@ -215,7 +215,17 @@ impl App {
                 pane.replace_selection(Selection::point(offset.line));
                 pane.preserve_scroll = false;
             }
-            None => self.action_failed(format!("heading not found: #{fragment}")),
+            None => {
+                // An explicit heading request keeps its established fallback
+                // at the document start rather than a previous visit's position.
+                let pane = self.active_mut();
+                pane.replace_selection(Selection::point(0));
+                pane.scroll_row = 0;
+                pane.scroll_wrap = 0;
+                pane.scroll_col = 0;
+                pane.preserve_scroll = false;
+                self.action_failed(format!("heading not found: #{fragment}"));
+            }
         }
         Ok(())
     }
@@ -1009,9 +1019,14 @@ impl App {
         if buffer_id != was_showing || !self.buffers[buffer_id].is_directory() {
             self.push_jump();
         }
-        self.refresh_background_buffer(buffer_id);
+        let refreshed = self.refresh_background_buffer(buffer_id);
         let directory_view = self.directory_views.get(path).cloned();
         let launch_selection = self.take_pending_launch_selection(buffer_id);
+        let saved_position = if self.active().buffer == buffer_id {
+            Some(super::view_position::ViewPosition::capture(self.active()))
+        } else {
+            self.active().saved_view_positions.get(&buffer_id).cloned()
+        };
         let pane = self.active_mut();
         pane.retarget(buffer_id);
         if let Some(view) = directory_view {
@@ -1020,14 +1035,23 @@ impl App {
             pane.scroll_wrap = view.scroll_wrap;
             pane.scroll_col = view.scroll_col;
             pane.row_prefix_scroll = view.row_prefix_scroll;
+        } else if let Some(saved) = saved_position {
+            saved.restore(pane);
         } else {
-            pane.replace_selection(launch_selection.unwrap_or_else(|| Selection::point(0)));
+            pane.replace_selection(Selection::point(0));
             pane.scroll_row = 0;
             pane.scroll_wrap = 0;
             pane.scroll_col = 0;
             pane.row_prefix_scroll = 0;
         }
-        pane.preserve_scroll = false;
+        if let Some(selection) = launch_selection {
+            pane.replace_selection(selection);
+            pane.mark_selection_semantics(SelectionSemantics::Runyte);
+            pane.preserve_scroll = false;
+        }
+        if refreshed {
+            self.normalize_buffer(buffer_id);
+        }
         self.lsp_touch(buffer_id);
         self.status(format!("opened {}", path.display()));
         self.report_new_registry_errors();
@@ -1567,18 +1591,12 @@ impl App {
         } else {
             self.active().directory_buffer
         };
-        let is_plugin_view = matches!(
-            self.buffers[buffer_id].generated_view_identity(),
-            Some(crate::buffer::GeneratedViewIdentity::Plugin { .. })
-        );
         let saved_position = self.active().saved_view_positions.get(&buffer_id).cloned();
-        let selection = self
-            .take_pending_launch_selection(buffer_id)
-            .unwrap_or_else(|| Selection::point(0));
+        let launch_selection = self.take_pending_launch_selection(buffer_id);
         let pane = self.active_mut();
         pane.retarget(buffer_id);
         pane.directory_buffer = explorer;
-        pane.replace_selection(selection);
+        pane.replace_selection(Selection::point(0));
         pane.scroll_row = 0;
         pane.scroll_wrap = 0;
         pane.scroll_col = 0;
@@ -1586,12 +1604,10 @@ impl App {
         if let Some(saved) = saved_position {
             saved.restore(pane);
         }
-        if is_plugin_view
-            && (pane.saved_view_positions.len() < 128
-                || pane.saved_view_positions.contains_key(&buffer_id))
-        {
-            pane.saved_view_positions
-                .insert(buffer_id, super::view_position::ViewPosition::capture(pane));
+        if let Some(selection) = launch_selection {
+            pane.replace_selection(selection);
+            pane.mark_selection_semantics(SelectionSemantics::Runyte);
+            pane.preserve_scroll = false;
         }
         if refreshed {
             self.normalize_buffer(buffer_id);

@@ -340,6 +340,8 @@ impl App {
                     row_map(saved.scroll_row),
                     saved.scroll_wrap,
                     saved.scroll_col,
+                    saved.row_prefix_scroll,
+                    saved.semantics,
                 ))
             })
             .collect::<Vec<_>>();
@@ -350,7 +352,17 @@ impl App {
             *name = model.model.title.clone();
         }
         let after = &self.buffers[buffer];
-        for (id, positions, primary, scroll, scroll_wrap, scroll_col) in captures {
+        for (
+            id,
+            positions,
+            primary,
+            scroll,
+            scroll_wrap,
+            scroll_col,
+            row_prefix_scroll,
+            semantics,
+        ) in captures
+        {
             let ranges = positions
                 .into_iter()
                 .map(|(anchor, head, reverse)| {
@@ -371,6 +383,9 @@ impl App {
                 scroll_row: scroll.min(after.last_row()),
                 scroll_wrap,
                 scroll_col,
+                row_prefix_scroll,
+                semantics,
+                preserve_scroll: true,
             };
             if pane.buffer == buffer {
                 position.restore(pane);

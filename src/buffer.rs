@@ -32,9 +32,11 @@ use crate::{
     content_alignment::{ContentAlignment, ContentLayout},
     directory_buffer::{DirectoryBuffer, DirectoryTransfer, ListingView},
     fs_plan::{DirectoryListing, FsPlan, TransferMode},
+    jumplist::SelectionSemantics,
     notification::{NOTIFICATIONS_BUFFER_NAME, NotificationDocument, NotificationRow},
     path_safety::open_regular_file,
     row_hints::{RowHints, display_cells},
+    selection::Selection,
     settings::{SETTINGS_BUFFER_NAME, SettingId},
     text::{Offset, Text, Transaction},
 };
@@ -143,6 +145,23 @@ pub const LOG_NAME: &str = "[log]";
 
 /// How many undo steps a buffer retains.
 const HISTORY_LIMIT: usize = 1000;
+
+/// Selection coordinates and their editing meaning at a text checkpoint.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct HistorySelection {
+    pub selection: Selection,
+    pub semantics: SelectionSemantics,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct HistoryEntry {
+    transactions: Vec<Transaction>,
+    before: Option<HistorySelection>,
+    after: Option<HistorySelection>,
+    /// Only an edit at this revision may refine `after`. History traversal
+    /// clears the stamp so it cannot record itself as a new edit.
+    revision: u64,
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BufferKind {
@@ -330,13 +349,13 @@ pub struct Buffer {
     ///
     /// Scratch and generated buffers may have no saved baseline.
     saved_text: Option<Text>,
-    undo: Vec<Vec<Transaction>>,
-    redo: Vec<Vec<Transaction>>,
+    undo: Vec<HistoryEntry>,
+    redo: Vec<HistoryEntry>,
     /// Inverse transactions collected during one Insert-mode action.
     ///
     /// They are kept newest-last while the action is live, then reversed into
     /// the order in which undo must apply them when the checkpoint is closed.
-    undo_group: Option<Vec<Transaction>>,
+    undo_group: Option<HistoryEntry>,
     revision_guards: Vec<Weak<AtomicBool>>,
     /// What the file looked like when this buffer last agreed with it.
     ///
@@ -3004,6 +3023,14 @@ impl Buffer {
     /// Returns `false` when the buffer is read-only or the transaction is a
     /// no-op, in which case no history entry is created.
     pub fn apply(&mut self, transaction: &Transaction) -> bool {
+        self.apply_with_selection(transaction, None)
+    }
+
+    pub(crate) fn apply_with_selection(
+        &mut self,
+        transaction: &Transaction,
+        selection: Option<HistorySelection>,
+    ) -> bool {
         if self.is_read_only() || transaction.is_empty() {
             return false;
         }
@@ -3014,10 +3041,25 @@ impl Buffer {
             directory.reconcile(&before, &self.text.to_string());
         }
         let inverse = revert.into_transaction();
+        let revision = self.revision();
+        let after = selection.as_ref().map(|state| HistorySelection {
+            selection: state.selection.map(transaction),
+            semantics: state.semantics,
+        });
         if let Some(group) = &mut self.undo_group {
-            group.push(inverse);
+            if group.transactions.is_empty() && group.before.is_none() {
+                group.before = selection;
+            }
+            group.after = after;
+            group.revision = revision;
+            group.transactions.push(inverse);
         } else {
-            self.undo.push(vec![inverse]);
+            self.undo.push(HistoryEntry {
+                transactions: vec![inverse],
+                before: selection,
+                after,
+                revision,
+            });
             if self.undo.len() > HISTORY_LIMIT {
                 self.undo.remove(0);
             }
@@ -3029,7 +3071,34 @@ impl Buffer {
 
     /// Starts collecting subsequent edits into one undo checkpoint.
     pub fn begin_undo_group(&mut self) {
-        self.undo_group.get_or_insert_with(Vec::new);
+        self.undo_group.get_or_insert_with(HistoryEntry::default);
+    }
+
+    pub(crate) fn begin_undo_group_with_selection(&mut self, selection: HistorySelection) {
+        self.begin_undo_group();
+        let group = self.undo_group.as_mut().unwrap();
+        if group.transactions.is_empty() && group.before.is_none() {
+            group.before = Some(selection);
+        }
+    }
+
+    /// Records the final selection produced by an edit, without letting later
+    /// movement or history traversal rewrite the checkpoint.
+    pub(crate) fn note_history_selection(&mut self, selection: HistorySelection) {
+        let revision = self.revision();
+        let entry = self.undo_group.as_mut().or_else(|| self.undo.last_mut());
+        if let Some(entry) = entry
+            && !entry.transactions.is_empty()
+            && entry.revision == revision
+        {
+            entry.after = Some(selection);
+        }
+    }
+
+    pub(crate) fn note_undo_group_selection(&mut self, selection: HistorySelection) {
+        if self.undo_group.is_some() {
+            self.note_history_selection(selection);
+        }
     }
 
     /// Closes the current checkpoint, if it contains any edits.
@@ -3037,10 +3106,10 @@ impl Buffer {
         let Some(mut group) = self.undo_group.take() else {
             return;
         };
-        if group.is_empty() {
+        if group.transactions.is_empty() {
             return;
         }
-        group.reverse();
+        group.transactions.reverse();
         self.undo.push(group);
         if self.undo.len() > HISTORY_LIMIT {
             self.undo.remove(0);
@@ -3055,8 +3124,8 @@ impl Buffer {
         self.undo
             .iter()
             .chain(&self.redo)
-            .flatten()
-            .chain(self.undo_group.iter().flatten())
+            .chain(self.undo_group.iter())
+            .flat_map(|entry| &entry.transactions)
             .map(Transaction::footprint)
             .sum()
     }
@@ -3066,7 +3135,7 @@ impl Buffer {
             + usize::from(
                 self.undo_group
                     .as_ref()
-                    .is_some_and(|group| !group.is_empty()),
+                    .is_some_and(|group| !group.transactions.is_empty()),
             )
     }
 
@@ -3076,14 +3145,16 @@ impl Buffer {
 
     /// Undoes one checkpoint and returns the inverse transactions in the
     /// order they were applied, so editor selections can follow the text.
-    pub(crate) fn undo_with_transactions(&mut self) -> Option<Vec<Transaction>> {
+    pub(crate) fn undo_with_transactions(
+        &mut self,
+    ) -> Option<(Vec<Transaction>, Option<HistorySelection>)> {
         if self.is_read_only() {
             return None;
         }
         self.commit_undo_group();
         let group = self.undo.pop()?;
-        let mut redo = Vec::with_capacity(group.len());
-        for transaction in &group {
+        let mut redo = Vec::with_capacity(group.transactions.len());
+        for transaction in &group.transactions {
             let directory_before = self.is_directory().then(|| self.text.to_string());
             self.invalidate_revision_guards();
             let revert = self.text.apply(transaction);
@@ -3093,9 +3164,14 @@ impl Buffer {
             redo.push(revert.into_transaction());
         }
         redo.reverse();
-        self.redo.push(redo);
+        self.redo.push(HistoryEntry {
+            transactions: redo,
+            before: group.before.clone(),
+            after: group.after,
+            revision: 0,
+        });
         self.update_dirty();
-        Some(group)
+        Some((group.transactions, group.before))
     }
 
     pub fn redo(&mut self) -> bool {
@@ -3103,14 +3179,16 @@ impl Buffer {
     }
 
     /// Redoes one checkpoint and returns its applied transactions.
-    pub(crate) fn redo_with_transactions(&mut self) -> Option<Vec<Transaction>> {
+    pub(crate) fn redo_with_transactions(
+        &mut self,
+    ) -> Option<(Vec<Transaction>, Option<HistorySelection>)> {
         if self.is_read_only() {
             return None;
         }
         self.commit_undo_group();
         let group = self.redo.pop()?;
-        let mut undo = Vec::with_capacity(group.len());
-        for transaction in &group {
+        let mut undo = Vec::with_capacity(group.transactions.len());
+        for transaction in &group.transactions {
             let directory_before = self.is_directory().then(|| self.text.to_string());
             self.invalidate_revision_guards();
             let revert = self.text.apply(transaction);
@@ -3120,9 +3198,14 @@ impl Buffer {
             undo.push(revert.into_transaction());
         }
         undo.reverse();
-        self.undo.push(undo);
+        self.undo.push(HistoryEntry {
+            transactions: undo,
+            before: group.before,
+            after: group.after.clone(),
+            revision: 0,
+        });
         self.update_dirty();
-        Some(group)
+        Some((group.transactions, group.after))
     }
 
     pub(crate) fn plugin_projection_source(&self) -> PluginProjectionSource {

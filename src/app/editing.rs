@@ -992,12 +992,28 @@ impl App {
         self.active_mut().replace_selection(selection);
     }
 
+    pub(super) fn history_selection(&self) -> crate::buffer::HistorySelection {
+        crate::buffer::HistorySelection {
+            selection: self.active().selection.clone(),
+            semantics: self.active().selection_semantics(),
+        }
+    }
+
+    pub(super) fn begin_buffer_undo_group(&mut self, buffer: usize) {
+        if self.active().buffer == buffer && self.active_terminal().is_none() {
+            let selection = self.history_selection();
+            self.buffers[buffer].begin_undo_group_with_selection(selection);
+        } else {
+            self.buffers[buffer].begin_undo_group();
+        }
+    }
+
     /// Applies a transaction to the active buffer and maps every pane's
     /// selection through it, so panes sharing a buffer stay consistent.
     pub(crate) fn edit(&mut self, transaction: Transaction) -> bool {
         let buffer_id = self.active().buffer;
         if matches!(self.mode, Mode::Insert | Mode::Replace) {
-            self.buffers[buffer_id].begin_undo_group();
+            self.begin_buffer_undo_group(buffer_id);
         }
         let changed = self.apply_to_buffer(buffer_id, &transaction);
         if changed {
@@ -1026,7 +1042,9 @@ impl App {
                 .iter()
                 .any(|session| session.has_buffer(buffer_id));
         let before = watched.then(|| self.buffers[buffer_id].text().clone());
-        if !self.buffers[buffer_id].apply(transaction) {
+        let selection = (self.active().buffer == buffer_id && self.active_terminal().is_none())
+            .then(|| self.history_selection());
+        if !self.buffers[buffer_id].apply_with_selection(transaction, selection) {
             return false;
         }
         if let Some(before) = before.as_ref() {
@@ -1179,12 +1197,12 @@ impl App {
 
     pub(super) fn enter_replace_mode(&mut self) {
         let buffer_id = self.active().buffer;
+        self.begin_buffer_undo_group(buffer_id);
         let selection = self
             .active()
             .selection
             .transform(|range| Range::point(range.head));
         self.active_mut().replace_selection(selection);
-        self.buffers[buffer_id].begin_undo_group();
         self.replace_session = Some(super::ReplaceSession {
             buffer: buffer_id,
             steps: Vec::new(),
@@ -1818,7 +1836,7 @@ impl App {
 
     pub(super) fn open_line(&mut self, above: bool) {
         let buffer_id = self.active().buffer;
-        self.buffers[buffer_id].begin_undo_group();
+        self.begin_buffer_undo_group(buffer_id);
         let buffer = &self.buffers[buffer_id];
         let mut rows: Vec<usize> = self
             .active()
@@ -3186,7 +3204,7 @@ impl App {
     ) {
         let buffer_id = self.active().buffer;
         if enter_insert {
-            self.buffers[buffer_id].begin_undo_group();
+            self.begin_buffer_undo_group(buffer_id);
         }
         let linewise = transient_line_selection
             || self.active().selection_semantics() == SelectionSemantics::VimLinewise;

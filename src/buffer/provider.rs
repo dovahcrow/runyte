@@ -387,8 +387,10 @@ impl Buffer {
             choice == ProviderReloadChoice::ReloadRemote && prepared.transaction.is_some();
         if applied {
             self.commit_undo_group();
-            self.undo
-                .push(vec![prepared.inverse.expect("prepared inverse")]);
+            self.undo.push(super::HistoryEntry {
+                transactions: vec![prepared.inverse.expect("prepared inverse")],
+                ..super::HistoryEntry::default()
+            });
             if self.undo.len() > HISTORY_LIMIT {
                 self.undo.remove(0);
             }

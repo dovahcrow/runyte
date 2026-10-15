@@ -591,7 +591,7 @@ impl App {
             .any(|session| session.has_buffer(buffer_id))
             .then(|| self.buffers[buffer_id].text().clone());
         let language_before = buffer_language(&self.buffers[buffer_id], &self.registry);
-        if let Some(transactions) = self.buffers[buffer_id].undo_with_transactions() {
+        if let Some((transactions, selection)) = self.buffers[buffer_id].undo_with_transactions() {
             if let Some(before) = diff_before.as_ref() {
                 let after = self.buffers[buffer_id].text();
                 for session in &mut self.diffs {
@@ -599,6 +599,11 @@ impl App {
                 }
             }
             self.map_transaction_views(buffer_id, &transactions);
+            if let Some(selection) = selection {
+                let pane = self.active_mut();
+                pane.replace_selection(selection.selection);
+                pane.mark_selection_semantics(selection.semantics);
+            }
             self.resync_replaced_buffer(buffer_id, language_before);
             self.normalize_buffer(buffer_id);
             self.status("undo");
@@ -616,7 +621,7 @@ impl App {
             .any(|session| session.has_buffer(buffer_id))
             .then(|| self.buffers[buffer_id].text().clone());
         let language_before = buffer_language(&self.buffers[buffer_id], &self.registry);
-        if let Some(transactions) = self.buffers[buffer_id].redo_with_transactions() {
+        if let Some((transactions, selection)) = self.buffers[buffer_id].redo_with_transactions() {
             if let Some(before) = diff_before.as_ref() {
                 let after = self.buffers[buffer_id].text();
                 for session in &mut self.diffs {
@@ -624,6 +629,11 @@ impl App {
                 }
             }
             self.map_transaction_views(buffer_id, &transactions);
+            if let Some(selection) = selection {
+                let pane = self.active_mut();
+                pane.replace_selection(selection.selection);
+                pane.mark_selection_semantics(selection.semantics);
+            }
             self.resync_replaced_buffer(buffer_id, language_before);
             self.normalize_buffer(buffer_id);
             self.status("redo");
@@ -646,6 +656,9 @@ impl App {
                 // Every pane's history can hold this buffer, not just the
                 // panes currently showing it.
                 pane.jumps.map(buffer_id, transaction);
+                if let Some(saved) = pane.saved_view_positions.get_mut(&buffer_id) {
+                    saved.map(transaction);
+                }
                 if let Some(origin) = &mut pane.markdown_origin
                     && origin.source == buffer_id
                 {

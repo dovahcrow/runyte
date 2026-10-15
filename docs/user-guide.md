@@ -1927,6 +1927,9 @@ discarded.
 
 `Space b b` lists open buffers in the Navigator's columns (see
 [Session and destination navigation](#session-and-destination-navigation)).
+Returning to a buffer in the same pane restores its last selection and viewport.
+Each pane keeps its own positions, and remembered selections follow text edits
+made while a buffer is hidden.
 
 | Key | Action |
 | --- | --- |
@@ -4244,8 +4247,11 @@ picker. Every picker filters as you type, moves with the arrows or
 
 **Undo.** A completion that needs an import applies both edits as one undo
 step, and so does a rename across a file. Everything typed between entering
-Insert mode and returning to Normal is one undo step too; undo and redo map
-the caret through the inverse edit rather than leaving it at a stale offset.
+Insert mode and returning to Normal is one undo step too. Undo restores the
+selection from before that edit, and redo restores the selection the edit
+produced, even after moving elsewhere or visiting another buffer. This includes
+all ranges and the primary caret. Other panes showing the same buffer keep
+their own selections mapped through the text change.
 
 #### Completion
 

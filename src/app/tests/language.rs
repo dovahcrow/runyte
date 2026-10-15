@@ -1915,6 +1915,8 @@ fn a_rename_across_files_is_one_undo_step_per_file() {
     let (mut app, path, _queue) = rust_app("let name = 1;\nlet other = name;\n");
     ready(&mut app, Encoding::Utf8);
     let second = temporary("b.rs");
+    set_cursor(&mut app, 1, 13);
+    let before = app.active().selection.clone();
 
     app.lsp_requests.insert(
         5,
@@ -1950,8 +1952,15 @@ fn a_rename_across_files_is_one_undo_step_per_file() {
     assert!(app.status.contains("2 files"), "{}", app.status);
     // A multi-range rename reverts in one step, and the second file was
     // opened as a buffer rather than written behind the person's back.
+    let after = app.active().selection.clone();
+    set_cursor(&mut app, 0, 0);
     press(&mut app, 'u');
     assert_eq!(text(&app), "let name = 1;\nlet other = name;\n");
+    assert_eq!(app.active().selection, before);
+    set_cursor(&mut app, 0, 0);
+    press(&mut app, 'U');
+    assert_eq!(text(&app), "let renamed = 1;\nlet other = renamed;\n");
+    assert_eq!(app.active().selection, after);
     assert!(
         app.buffers
             .iter()

@@ -1661,6 +1661,7 @@ fn production_selection_replacements_are_revision_tracked() {
         [
             "self.selection = selection;",
             "pane.selection = pane.selection.map(transaction);",
+            "self.selection = self.selection.map(transaction);",
         ],
         "semantic selection producers must use Pane::replace_selection; only the setter and transaction coordinate mapping assign directly"
     );

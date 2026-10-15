@@ -590,10 +590,19 @@ impl Pane {
         self.terminal = None;
         self.covered_terminal = None;
         if self.buffer != buffer {
-            if self.saved_view_positions.contains_key(&self.buffer) {
-                self.saved_view_positions
-                    .insert(self.buffer, view_position::ViewPosition::capture(self));
+            if self.saved_view_positions.len() >= 128
+                && !self.saved_view_positions.contains_key(&self.buffer)
+                && let Some(oldest) = self
+                    .buffer_history
+                    .iter()
+                    .copied()
+                    .find(|id| self.saved_view_positions.contains_key(id))
+                    .or_else(|| self.saved_view_positions.keys().next().copied())
+            {
+                self.saved_view_positions.remove(&oldest);
             }
+            self.saved_view_positions
+                .insert(self.buffer, view_position::ViewPosition::capture(self));
             self.remember_buffer(self.buffer);
             self.buffer = buffer;
             self.selection_semantics = SelectionSemantics::Runyte;

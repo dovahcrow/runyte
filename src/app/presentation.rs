@@ -1150,6 +1150,7 @@ impl App {
             self.switch_buffer(source);
             self.active_mut()
                 .replace_selection(Selection::point(offset));
+            self.active_mut().preserve_scroll = false;
             return;
         }
         if !self.is_markdown_document(active) {

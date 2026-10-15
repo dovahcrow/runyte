@@ -3071,7 +3071,7 @@ impl App {
         let buffer_id = self.active().buffer;
         let register = self.yank_value(true);
         self.write_selected_register(register);
-        self.buffers[buffer_id].begin_undo_group();
+        self.begin_buffer_undo_group(buffer_id);
         let buffer = self.active_buffer();
         let spans = self.operative_spans();
         let primary = self.active().selection.primary_index();
@@ -5544,9 +5544,7 @@ impl App {
 
     pub(super) fn enter_normal_mode(&mut self) {
         let buffer_id = self.active().buffer;
-        if matches!(self.mode, Mode::Insert | Mode::Replace) {
-            self.buffers[buffer_id].commit_undo_group();
-        }
+        let editing = matches!(self.mode, Mode::Insert | Mode::Replace);
         let selection = self.normal_mode_selection(
             buffer_id,
             self.active().selection.clone(),
@@ -5564,12 +5562,18 @@ impl App {
                 .active_mut()
                 .mark_selection_semantics(SelectionSemantics::HalfOpen),
         }
+        if editing {
+            let selection = self.history_selection();
+            self.buffers[buffer_id].note_undo_group_selection(selection);
+            self.buffers[buffer_id].commit_undo_group();
+        }
         self.grammar.reset();
         self.dismiss_popups();
     }
 
     fn enter_insert(&mut self, after: bool) {
         let buffer_id = self.active().buffer;
+        self.begin_buffer_undo_group(buffer_id);
         let buffer = &self.buffers[buffer_id];
         let selection = self.active().selection.transform(|range| {
             if after {
@@ -5581,7 +5585,6 @@ impl App {
             }
         });
         self.active_mut().replace_selection(selection);
-        self.buffers[buffer_id].begin_undo_group();
         self.mode = Mode::Insert;
     }
 

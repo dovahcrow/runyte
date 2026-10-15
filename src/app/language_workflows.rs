@@ -2337,7 +2337,10 @@ impl App {
                 return Err(DocumentEditFailure::OverlappingEdits { path });
             }
             let transaction = Transaction::new(changes);
-            if !staged.apply(&transaction) {
+            let selection = (buffer_id == Some(self.active().buffer)
+                && self.active_terminal().is_none())
+            .then(|| self.history_selection());
+            if !staged.apply_with_selection(&transaction, selection) {
                 continue;
             }
             let target = match buffer_id {

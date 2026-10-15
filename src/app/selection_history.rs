@@ -119,11 +119,20 @@ impl App {
         let before = (outer && self.selection_prompt_origin.is_none())
             .then(|| self.capture_selection_origin())
             .flatten();
+        let edited_buffer = self.active().buffer;
+        let edit_revision = self.buffers[edited_buffer].revision();
         let epoch = self.selection_history_epoch;
         self.selection_action_depth += 1;
         let result = action(self);
         self.selection_action_depth -= 1;
         if outer {
+            if self.active().buffer == edited_buffer
+                && self.active_terminal().is_none()
+                && self.buffers[edited_buffer].revision() != edit_revision
+            {
+                let selection = self.history_selection();
+                self.buffers[edited_buffer].note_history_selection(selection);
+            }
             if self.mode == Mode::Command {
                 // A prompt is part of the operation it collects, not a
                 // sequence of selection changes. Retain one bounded origin.
