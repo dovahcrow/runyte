@@ -198,6 +198,7 @@ mod git_merges;
 mod indentation;
 mod jump_word_viewport;
 mod language;
+mod leap;
 mod markdown_list_continuation;
 mod markdown_positions;
 mod markdown_tables;

@@ -85,7 +85,8 @@ them, regardless of which extensibility direction is chosen.
 - **Interaction line** — the final global row. It is reserved for an active
   prompt, pending key sequence, or the last action echo. Character-taking
   bindings retain the typed keys and identify the next operand, including both
-  stages of surround replacement. Jump labels report their next key and final
+  stages of surround replacement. `leap` reports its first and second query
+  characters before labels appear. Jump labels report their next key and final
   outcome. Notifications never replace it.
 - **Overlay** — a temporary surface drawn over the editor area, such as a
   picker, key hints, completion, or a confirmation. An overlay is not a pane

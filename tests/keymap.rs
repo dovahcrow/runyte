@@ -35,6 +35,42 @@ fn every_mode_sequence_is_unique_and_described() {
 }
 
 #[test]
+fn leap_and_worktree_shortcuts_remain_distinct_in_both_editor_modes() {
+    for mode in [Mode::Normal, Mode::Select] {
+        for (scope, keys, target) in [
+            (
+                BindingScope::Global,
+                "gw",
+                BindingTarget::Editor(EditorCommand::Leap),
+            ),
+            (
+                BindingScope::Global,
+                " gw",
+                BindingTarget::Colon(ColonCommand::GitWorktrees),
+            ),
+            (
+                BindingScope::DirectoryTree,
+                "gw",
+                BindingTarget::Editor(EditorCommand::GotoWord),
+            ),
+            (
+                BindingScope::Terminal,
+                "gw",
+                BindingTarget::Editor(EditorCommand::Leap),
+            ),
+        ] {
+            assert!(
+                matches!(
+                    default_keymap().lookup_in(mode, scope, &sequence(keys)),
+                    Lookup::Exact(binding) if binding.target == target
+                ),
+                "{scope:?} {keys}"
+            );
+        }
+    }
+}
+
+#[test]
 fn git_namespace_keeps_only_navigation_and_refresh_commands() {
     let retained = [
         " gg", " gd", " gD", " gr", " gt", " gf", " gl", " gn", " gc", " gb", " gB", " gw",

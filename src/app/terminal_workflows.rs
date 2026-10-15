@@ -803,7 +803,7 @@ impl App {
                 }
                 true
             }
-            Command::GotoWord => {
+            Command::GotoWord | Command::Leap => {
                 let targets = session.visible_review_word_targets(page);
                 let _ = session;
                 self.terminals.enforce_memory_budget();

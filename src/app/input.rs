@@ -4692,6 +4692,7 @@ impl App {
             Command::GotoWindowBottom => self.motion(Motion::WindowBottom),
             Command::GotoFile => self.goto_file_under_cursor()?,
             Command::GotoWord => self.label_visible_words(),
+            Command::Leap => self.start_leap(),
             Command::ToggleSoftWrap => {
                 self.config.editor.soft_wrap = !self.config.editor.soft_wrap;
                 let mut message = if self.config.editor.soft_wrap {

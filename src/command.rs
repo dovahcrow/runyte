@@ -740,6 +740,7 @@ editor_commands! {
         "goto-word",
         "Label visible words by proximity and jump to one"
     ),
+    Leap => ("leap", "Jump to a labelled target"),
     ToggleSoftWrap => ("toggle-soft-wrap", "Toggle soft wrapping"),
     ToggleWhitespace => ("toggle-whitespace", "Toggle whitespace markers"),
     ToggleMarkdownRender => (
@@ -1175,6 +1176,7 @@ impl EditorCommand {
             | Self::GotoWindowBottom
             | Self::GotoFile
             | Self::GotoWord
+            | Self::Leap
             | Self::JumpBackward
             | Self::JumpForward
             | Self::JumpBackwardBuffer

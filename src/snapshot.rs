@@ -1632,7 +1632,7 @@ impl App {
                     |(_, part)| TextRunKind::JumpLabel(part),
                 );
                 let text = if let Some((label, _)) = offset.and_then(&label_at) {
-                    label.to_string()
+                    format!("{label}{}", " ".repeat(atom.width.saturating_sub(1)))
                 } else if atom.ch == '\t' {
                     if whitespace {
                         format!("→{}", " ".repeat(atom.width.saturating_sub(1)))
@@ -1718,7 +1718,8 @@ impl App {
             let col = start_col + col;
             let remaining = visible_end.saturating_sub(visual_col);
             if let Some((label, part)) = label_at(row_start + col) {
-                if remaining == 0 {
+                let width = UnicodeWidthChar::width(character).unwrap_or(0);
+                if width == 0 || width > remaining {
                     break;
                 }
                 push_text_run(
@@ -1734,10 +1735,10 @@ impl App {
                     },
                 );
                 runs.push(TextRun {
-                    text: label.to_string(),
+                    text: format!("{label}{}", " ".repeat(width - 1)),
                     kind: TextRunKind::JumpLabel(part),
                 });
-                visual_col += 1;
+                visual_col += width;
                 drawn_end = col + 1;
                 if visual_col >= visible_end {
                     break;
@@ -1818,7 +1819,8 @@ impl App {
             .segment
             .is_none_or(|segment| segment.end == buffer.line_len(context.row));
         let has_terminator = buffer.text().line(context.row).len_chars() > line_len;
-        let ending_marker = self.config.editor.render_whitespace
+        let ending_label = label_at(row_start + line_len);
+        let ending_cell = (self.config.editor.render_whitespace || ending_label.is_some())
             && final_segment
             && drawn_end == line_len
             && has_terminator
@@ -1827,7 +1829,15 @@ impl App {
                 .map(|run| display_cells(&run.text))
                 .sum::<usize>()
                 < context.text_width;
-        if ending_marker {
+        let ending_label = ending_label.filter(|_| ending_cell);
+        let ending_marker =
+            self.config.editor.render_whitespace && ending_cell && ending_label.is_none();
+        if let Some((label, part)) = ending_label {
+            runs.push(TextRun {
+                text: label.to_string(),
+                kind: TextRunKind::JumpLabel(part),
+            });
+        } else if ending_marker {
             let end = row_start + line_len;
             runs.push(TextRun {
                 text: "¬".to_owned(),
@@ -1846,6 +1856,7 @@ impl App {
         // but only when that cell belongs to this segment and fits on screen.
         if active
             && !ending_marker
+            && ending_label.is_none()
             && drawn_end == line_len
             && context
                 .segment
@@ -2923,7 +2934,7 @@ mod tests {
         let line = prepared_snapshot(&mut app, 160, 8).status.interaction_line;
         assert_eq!(
             line,
-            "jump to word: m … (type the second label key; Esc cancels)"
+            "jump to target: m … (type the second label key; Esc cancels)"
         );
         app.handle_key(KeyStroke::char('a')).unwrap();
         assert_eq!(

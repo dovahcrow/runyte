@@ -802,6 +802,30 @@ buffers](#files-and-buffers), [Panes](#panes), [Terminals](#terminals),
 [Git](#git), [Language support](#language-support), and [Workspaces and
 persistent sessions](#workspaces-and-persistent-sessions).
 
+### Two-character jumps
+
+`gw` (`leap`) waits for two characters, ignoring letter case and Shift, then
+labels matching positions in the active buffer viewport, in both directions.
+Matches may start inside a word or on punctuation and spaces. Symbol pairs
+follow US keyboard Shift pairs: `[` / `{`, `]` / `}`, `;` / `:`, `1` / `!`,
+and so on. Both forms match in either direction. Type a displayed
+label to jump to the first character; even a single match waits for its label.
+Nearby matches use one label key; farther matches may use two. Escape or a
+non-character key cancels at any stage. Normal mode moves the caret; Select
+mode extends the selection. The jump is recorded for `Ctrl-o` / `Ctrl-i`.
+
+Only the active pane's visible text is labelled, respecting scrolling, folds,
+and soft wrapping. A space as the second query character also matches a real
+LF or CRLF line ending: type `gw`, comma, then Space to label a comma at the
+end of a line. EOF without a line ending does not count as a space. The jump
+lands on the visible character before the line ending; a two-key label uses
+the following line-end cell when there is room. Newlines, combining marks
+and control characters are not jump targets themselves. Labels never cross a viewport
+or wrap edge or overwrite another match's label; targets without room for
+their assigned label are omitted. At most 676 matches receive labels.
+`Space g w` (`:git-worktrees`) opens the worktree list. The directory tree
+and terminal review retain their existing `gw` entry/word-label jumps.
+
 ### Editing
 
 The one-key rows in this table are the complete direct-binding inventory for
@@ -823,7 +847,7 @@ under [Insert and Replace modes](#insert-and-replace-modes).
 | `gg` / `ge` or `G` | Start / end of file |
 | `gp` / `gP` | Next / previous paragraph |
 | `gf` | Open the selected path exactly, or infer the complete path under a bare cursor; inferred paths at the end of a sentence ignore trailing punctuation if the literal name does not exist. On a Markdown link to `#heading` or `file.md#heading`, land on that heading |
-| `gw` | Dim the view, label nearby words with one key and farther words with two, then type a label to jump |
+| `gw` | Type two characters, ignoring case and Shift, then a label to jump to a visible match |
 | `gt` / `gc` / `gb`; `H` / `M` / `L` | Move to the top / center / bottom of the visible window |
 | `i` / `a` / `I` / `A` | Insert before/after cursor or at line boundary |
 | `o` / `O` | Open line below / above |
@@ -6834,7 +6858,7 @@ This is the list `:help key-actions` shows, grouped by topic.
 | `goto-window-top` | N S | continue | Move to the top of the view |
 | `goto-window-center` | N S | continue | Move to the center of the view |
 | `goto-window-bottom` | N S | continue | Move to the bottom of the view |
-| `goto-word` | N S | last | Label visible words by proximity and jump to one |
+| `leap` | N S | last | Jump to a labelled target |
 | `match-bracket` | N S | last | Go to the matching syntax bracket |
 | `jump-backward` | N S | last | Jump to the previous position |
 | `jump-forward` | N S | last | Jump to the next position |
@@ -7553,7 +7577,8 @@ The STATE column reuses other roles:
 
 #### Jump labels
 
-These colour the `gw` (goto-word) labels.
+These colour the `gw` (leap) labels and the word/entry labels used in terminal
+review and the directory tree.
 
 | Role | Colours | Default |
 | --- | --- | --- |

@@ -143,8 +143,12 @@ fn committed_comparison_count_colors_follow_branch_and_worktree_refresh() {
         let mut app = fixture.app();
         app.theme.change_added = crate::config::Color::Green;
         app.theme.change_removed = crate::config::Color::Red;
-        for ch in [' ', 'g', source] {
-            press(&mut app, ch);
+        if source == 'w' {
+            app.execute_command("git-worktrees").unwrap();
+        } else {
+            for ch in [' ', 'g', source] {
+                press(&mut app, ch);
+            }
         }
         row(&mut app, "feature");
         context_action(&mut app, 'd');
@@ -441,9 +445,7 @@ fn committed_comparison_worktree_action_uses_the_selected_checkout_tip() {
         "feature",
     ]);
     let mut app = fixture.app();
-    for ch in [' ', 'g', 'w'] {
-        press(&mut app, ch);
-    }
+    app.execute_command("git-worktrees").unwrap();
     row(&mut app, "linked");
     context_action(&mut app, 'd');
     assert_eq!(app.key_binding_scope(), BindingScope::GitComparison);

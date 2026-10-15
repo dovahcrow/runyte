@@ -4,8 +4,9 @@
 //!
 //! `goto-word` paints a short label over every word on screen and jumps to the
 //! one whose label you type. This module owns prefix-free label assignment and
-//! narrowing; it knows nothing about how a label is drawn, nor about what makes
-//! an offset worth labelling. The editor hands it target offsets ordered from
+//! narrowing, plus the initial two-character query input for `leap`. It knows
+//! nothing about drawing or what makes an offset worth labelling. The editor
+//! hands it target offsets ordered from
 //! nearest to farthest and asks, per offset, which label character belongs
 //! there.
 
@@ -37,6 +38,10 @@ pub enum LabelPart {
 /// What a keystroke did to the labels.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Press {
+    /// The first query character was entered; wait for the second.
+    QueryStarted(char),
+    /// Both query characters were entered; the editor can find targets now.
+    QueryCompleted([char; 2]),
     /// The key narrowed the labels; more are still showing.
     Narrowed,
     /// The key completed a label. Jump here.
@@ -66,15 +71,29 @@ struct Target {
     label: Label,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Phase {
+    FirstCharacter,
+    SecondCharacter(char),
+    Label(Option<char>),
+}
+
 /// A live set of jump labels.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct JumpLabels {
     targets: Vec<Target>,
-    /// A two-key label's prefix, once it has been typed.
-    typed: Option<char>,
+    phase: Phase,
 }
 
 impl JumpLabels {
+    /// Starts a literal two-character query without moving the caret.
+    pub fn for_query() -> Self {
+        Self {
+            targets: Vec::new(),
+            phase: Phase::FirstCharacter,
+        }
+    }
+
     /// Labels ranked `offsets`, nearest first. `None` when there is nothing to
     /// label. Every target is assumed to have room for a two-character label.
     pub fn new(offsets: impl IntoIterator<Item = Offset>) -> Option<Self> {
@@ -110,7 +129,7 @@ impl JumpLabels {
                     .collect();
                 return Some(Self {
                     targets,
-                    typed: None,
+                    phase: Phase::Label(None),
                 });
             }
             candidates = retained;
@@ -131,9 +150,12 @@ impl JumpLabels {
     /// target. After its prefix is typed, only the suffix remains and moves to
     /// the target cell, where it is immediately actionable.
     pub fn label_at(&self, offset: Offset) -> Option<(char, LabelPart)> {
+        let Phase::Label(typed) = self.phase else {
+            return None;
+        };
         self.targets
             .iter()
-            .find_map(|target| match (self.typed, target.label) {
+            .find_map(|target| match (typed, target.label) {
                 (None, Label::One(key)) if target.offset == offset => {
                     Some((key, LabelPart::Immediate))
                 }
@@ -154,7 +176,15 @@ impl JumpLabels {
 
     /// Feeds the next typed character.
     pub fn press(&mut self, key: char) -> Press {
-        match self.typed {
+        let typed = match self.phase {
+            Phase::FirstCharacter => {
+                self.phase = Phase::SecondCharacter(key);
+                return Press::QueryStarted(key);
+            }
+            Phase::SecondCharacter(first) => return Press::QueryCompleted([first, key]),
+            Phase::Label(typed) => typed,
+        };
+        match typed {
             None => match self
                 .targets
                 .iter()
@@ -165,7 +195,7 @@ impl JumpLabels {
                     |target| matches!(target.label, Label::Two([first, _]) if first == key),
                 ) =>
                 {
-                    self.typed = Some(key);
+                    self.phase = Phase::Label(Some(key));
                     Press::Narrowed
                 }
                 None => Press::Missed,

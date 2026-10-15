@@ -10219,6 +10219,62 @@ mod tests {
     }
 
     #[test]
+    fn leap_line_end_labels_render_both_keys_before_narrowing() {
+        for ending in ["\n", "\r\n"] {
+            for whitespace in [false, true] {
+                let mut config = Config::default();
+                config.editor.line_numbers = false;
+                config.editor.render_whitespace = whitespace;
+                let mut app = App::new(config, None).unwrap();
+                let content = format!("x,{ending}").repeat(27);
+                app.buffers[0].apply(&Transaction::insert(0, &content));
+                let _ = rendered(&mut app, 40, 34);
+                for character in "gw, ".chars() {
+                    app.handle_key(crate::input::KeyStroke::char(character))
+                        .unwrap();
+                }
+                assert_eq!(app.jump.as_ref().unwrap().len(), 27);
+                let screen = rendered(&mut app, 40, 34);
+                assert!(screen.contains("xma"), "{screen}");
+                assert!(screen.contains("xms"), "{screen}");
+                app.handle_key(crate::input::KeyStroke::char('m')).unwrap();
+                let screen = rendered(&mut app, 40, 34);
+                assert!(!screen.contains("xma"), "{screen}");
+                app.handle_key(crate::input::KeyStroke::char('a')).unwrap();
+                assert_eq!(app.cursor_position(), Position::new(25, 1));
+                assert!(app.jump.is_none());
+                assert_eq!(app.buffers[0].to_string(), content);
+            }
+        }
+    }
+
+    #[test]
+    fn leap_labels_preserve_wide_character_positions_and_jump_to_the_match() {
+        let mut config = Config::default();
+        config.editor.line_numbers = false;
+        let mut app = App::new(config, None).unwrap();
+        app.buffers[0].apply(&Transaction::insert(0, "中文 x 中文 tail"));
+        let _ = rendered(&mut app, 40, 8);
+        for character in "gw中文".chars() {
+            app.handle_key(crate::input::KeyStroke::new(
+                crate::input::KeyCode::Char(character),
+                crate::input::Modifiers::NONE,
+            ))
+            .unwrap();
+        }
+        let screen = rendered(&mut app, 40, 8);
+        assert!(screen.contains("a 文  x s 文  tail"), "{screen}");
+        app.handle_key(crate::input::KeyStroke::new(
+            crate::input::KeyCode::Char('s'),
+            crate::input::Modifiers::NONE,
+        ))
+        .unwrap();
+        assert_eq!(app.cursor_position(), Position::new(0, 5));
+        assert!(app.jump.is_none());
+        assert_eq!(app.buffers[0].to_string(), "中文 x 中文 tail");
+    }
+
+    #[test]
     fn jump_labels_paint_over_the_words_they_name() {
         let mut config = Config::default();
         config.editor.line_numbers = false;
@@ -10232,13 +10288,14 @@ mod tests {
         // The first frame records the text width used by `goto-word`.
         let _ = rendered(&mut app, 20, 6);
 
-        for character in "gw".chars() {
-            app.handle_key(crate::input::KeyStroke::new(
-                crate::input::KeyCode::Char(character),
-                crate::input::Modifiers::NONE,
-            ))
-            .unwrap();
-        }
+        app.execute(
+            crate::command::CommandInvocation::editor(
+                crate::command::EditorCommand::GotoWord,
+                Default::default(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
 
         let mut terminal = Terminal::new(TestBackend::new(20, 6)).unwrap();
         let hints = KeyHintState::default();
@@ -10286,10 +10343,14 @@ mod tests {
         app.buffers[0].apply(&Transaction::insert(0, &line));
 
         let _ = rendered(&mut app, 120, 6);
-        for character in "gw".chars() {
-            app.handle_key(crate::input::KeyStroke::char(character))
-                .unwrap();
-        }
+        app.execute(
+            crate::command::CommandInvocation::editor(
+                crate::command::EditorCommand::GotoWord,
+                Default::default(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
 
         let mut terminal = Terminal::new(TestBackend::new(120, 6)).unwrap();
         let hints = KeyHintState::default();
@@ -10351,13 +10412,14 @@ mod tests {
             .unwrap();
         assert_eq!(app.active().wrap_width, 10);
 
-        for character in "gw".chars() {
-            app.handle_key(crate::input::KeyStroke::new(
-                crate::input::KeyCode::Char(character),
-                crate::input::Modifiers::NONE,
-            ))
-            .unwrap();
-        }
+        app.execute(
+            crate::command::CommandInvocation::editor(
+                crate::command::EditorCommand::GotoWord,
+                Default::default(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
 
         // Only the first three words are visible; later words must not hold a
         // label a person cannot see or reach.
@@ -10387,13 +10449,14 @@ mod tests {
         // cells inside the pane.
         assert_eq!(app.active().wrap_width, 6);
 
-        for character in "gw".chars() {
-            app.handle_key(crate::input::KeyStroke::new(
-                crate::input::KeyCode::Char(character),
-                crate::input::Modifiers::NONE,
-            ))
-            .unwrap();
-        }
+        app.execute(
+            crate::command::CommandInvocation::editor(
+                crate::command::EditorCommand::GotoWord,
+                Default::default(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
 
         // Word-aware wrapping every six columns puts alpha, bravo, and
         // charlie at the starts of the three visible segments. Measuring the

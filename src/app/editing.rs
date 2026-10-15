@@ -18,6 +18,44 @@ use super::{
     transform_selection, visual_column, without_trailing_line_terminator,
 };
 
+/// Compare characters as typed on the same US keyboard key, ignoring Shift.
+/// Unicode letters use their lowercase mappings without changing text offsets.
+fn leap_pair_matches(text: &[char], query: [char; 2]) -> bool {
+    fn unshift(character: char) -> char {
+        match character {
+            '\n' => ' ',
+            '~' => '`',
+            '!' => '1',
+            '@' => '2',
+            '#' => '3',
+            '$' => '4',
+            '%' => '5',
+            '^' => '6',
+            '&' => '7',
+            '*' => '8',
+            '(' => '9',
+            ')' => '0',
+            '_' => '-',
+            '+' => '=',
+            '{' => '[',
+            '}' => ']',
+            '|' => '\\',
+            ':' => ';',
+            '"' => '\'',
+            '<' => ',',
+            '>' => '.',
+            '?' => '/',
+            _ => character,
+        }
+    }
+    text.len() == 2
+        && text.iter().zip(query).all(|(&actual, expected)| {
+            unshift(actual)
+                .to_lowercase()
+                .eq(unshift(expected).to_lowercase())
+        })
+}
+
 #[derive(Clone, Copy)]
 enum ListKind<'a> {
     Bullet(char),
@@ -723,6 +761,19 @@ impl App {
     /// distant document offset look close. Label assignment removes and
     /// regenerates any two-key label that would cross the viewport edge.
     pub(super) fn label_visible_words(&mut self) {
+        self.label_visible_targets(None);
+    }
+
+    pub(super) fn start_leap(&mut self) {
+        if self.directory_tree.focused || self.active_terminal().is_some() {
+            self.action_failed("leap requires a buffer pane");
+            return;
+        }
+        self.jump = Some(JumpLabels::for_query());
+        self.status("leap: type two characters (Esc cancels)");
+    }
+
+    fn label_visible_targets(&mut self, pair: Option<[char; 2]>) {
         let height = self.viewport_height();
         let tab_width = self.active_indentation().tab_width;
         let soft_wrap = self.pane_soft_wrap(self.active_pane);
@@ -828,67 +879,112 @@ impl App {
                 },
                 |segment| segment.start..segment.end,
             );
-            let line: Vec<char> = line_string.chars().collect();
-            let mut word_start = None;
-            // One past the end closes a word that runs to the end of the row.
-            for column in 0..=line.len() {
-                match (line.get(column).copied().is_some_and(is_word), word_start) {
-                    (true, None) => word_start = Some(column),
-                    (false, Some(begin)) => {
-                        if column - begin >= 2
-                            && columns.contains(&begin)
-                            && visual.segment.is_none_or(|segment| {
-                                crate::wrap::segment_contains(
-                                    buffer, row, segment, begin, wrap_width, tab_width,
-                                )
-                            })
-                            && line[begin..begin + 2].iter().copied().all(is_single_cell)
-                        {
-                            let screen_col = visual.segment.map_or_else(
-                                || {
-                                    crate::wrap::cells_from_column(
-                                        &line_string,
-                                        scroll_col,
-                                        begin,
-                                        tab_width,
-                                    )
-                                },
-                                |_| {
-                                    crate::wrap::visible_screen_column(
-                                        buffer, row, begin, wrap_width, tab_width, scroll_col,
-                                    )
-                                    .unwrap_or(usize::MAX)
-                                },
-                            );
-                            let visible_label_cells = visual.segment.map_or_else(
-                                || wrap_width.saturating_sub(screen_col).min(2),
-                                |segment| {
-                                    let second = crate::wrap::segment_contains(
-                                        buffer,
-                                        row,
-                                        segment,
-                                        begin + 1,
-                                        wrap_width,
-                                        tab_width,
-                                    );
-                                    usize::from(second) + 1
-                                },
-                            );
-                            let visible_label_cells =
-                                visible_label_cells.min(wrap_width.saturating_sub(screen_col));
-                            if visible_label_cells > 0 && screen_col < wrap_width {
-                                candidates.push(Candidate {
-                                    offset: start + begin,
-                                    screen_row,
-                                    screen_col,
-                                    visible_label_cells,
-                                    order: candidates.len(),
-                                });
+            let mut line: Vec<char> = line_string.chars().collect();
+            if pair.is_some() && buffer.text().line(row).len_chars() > line.len() {
+                // Treat LF and CRLF as one query character. Geometry still
+                // comes from the text without its terminator; only a visible
+                // character before the newline can be a jump target.
+                line.push('\n');
+            }
+            let mut starts = Vec::new();
+            if let Some(pair) = pair {
+                starts.extend(
+                    line.windows(2).enumerate().filter_map(|(begin, chars)| {
+                        leap_pair_matches(chars, pair).then_some(begin)
+                    }),
+                );
+            } else {
+                let mut word_start = None;
+                // One past the end closes a word that runs to the end of the row.
+                for column in 0..=line.len() {
+                    match (line.get(column).copied().is_some_and(is_word), word_start) {
+                        (true, None) => word_start = Some(column),
+                        (false, Some(begin)) => {
+                            if column - begin >= 2 {
+                                starts.push(begin);
                             }
+                            word_start = None;
                         }
-                        word_start = None;
+                        _ => {}
                     }
-                    _ => {}
+                }
+            }
+            for begin in starts {
+                if !columns.contains(&begin)
+                    || !visual.segment.is_none_or(|segment| {
+                        crate::wrap::segment_contains(
+                            buffer, row, segment, begin, wrap_width, tab_width,
+                        )
+                    })
+                    || !line[begin..begin + 2].iter().copied().enumerate().all(
+                        |(index, character)| {
+                            if pair.is_some() {
+                                (index == 1 && character == '\n')
+                                    || unicode_width::UnicodeWidthChar::width(character)
+                                        .is_some_and(|width| width > 0)
+                            } else {
+                                is_single_cell(character)
+                            }
+                        },
+                    )
+                {
+                    continue;
+                }
+                let screen_col = visual.segment.map_or_else(
+                    || crate::wrap::cells_from_column(&line_string, scroll_col, begin, tab_width),
+                    |_| {
+                        crate::wrap::visible_screen_column(
+                            buffer, row, begin, wrap_width, tab_width, scroll_col,
+                        )
+                        .unwrap_or(usize::MAX)
+                    },
+                );
+                let newline_second = pair.is_some() && line[begin + 1] == '\n';
+                let visible_label_cells = visual.segment.filter(|_| !newline_second).map_or_else(
+                    || wrap_width.saturating_sub(screen_col).min(2),
+                    |segment| {
+                        let second = crate::wrap::segment_contains(
+                            buffer,
+                            row,
+                            segment,
+                            begin + 1,
+                            wrap_width,
+                            tab_width,
+                        );
+                        usize::from(second) + 1
+                    },
+                );
+                let mut visible_label_cells =
+                    visible_label_cells.min(wrap_width.saturating_sub(screen_col));
+                if let Some(pair) = pair {
+                    let first_width =
+                        unicode_width::UnicodeWidthChar::width(line[begin]).unwrap_or(0);
+                    let second_width = if newline_second {
+                        1
+                    } else {
+                        unicode_width::UnicodeWidthChar::width(line[begin + 1]).unwrap_or(0)
+                    };
+                    let remaining = wrap_width.saturating_sub(screen_col);
+                    if first_width > remaining {
+                        continue;
+                    }
+                    if first_width + second_width > remaining
+                        || line
+                            .get(begin + 1..begin + 3)
+                            .is_some_and(|chars| leap_pair_matches(chars, pair))
+                    {
+                        // A two-key label must not overwrite an adjacent match.
+                        visible_label_cells = visible_label_cells.min(1);
+                    }
+                }
+                if visible_label_cells > 0 && screen_col < wrap_width {
+                    candidates.push(Candidate {
+                        offset: start + begin,
+                        screen_row,
+                        screen_col,
+                        visible_label_cells,
+                        order: candidates.len(),
+                    });
                 }
             }
         }
@@ -907,9 +1003,11 @@ impl App {
                 .map(|candidate| (candidate.offset, candidate.visible_label_cells)),
         ) {
             Some(labels) => {
-                self.status(format!("jump to word: {} labels", labels.len()));
+                let target = if pair.is_some() { "match" } else { "word" };
+                self.status(format!("jump to {target}: {} labels", labels.len()));
                 self.jump = Some(labels);
             }
+            None if pair.is_some() => self.action_failed("no visible matches to jump to"),
             None => self.action_failed("no words on screen to jump to"),
         }
     }
@@ -935,12 +1033,19 @@ impl App {
 
         let mut labels = self.jump.take().expect("jump labels are live");
         match labels.press(typed) {
+            Press::QueryStarted(first) => {
+                self.jump = Some(labels);
+                self.status(format!(
+                    "leap: {first} … (type the second character; Esc cancels)"
+                ));
+            }
+            Press::QueryCompleted(pair) => self.label_visible_targets(Some(pair)),
             Press::Narrowed => {
                 self.jump = Some(labels);
                 let target = if self.directory_tree.focused {
                     "tree entry"
                 } else {
-                    "word"
+                    "target"
                 };
                 self.status(format!(
                     "jump to {target}: {typed} … (type the second label key; Esc cancels)"

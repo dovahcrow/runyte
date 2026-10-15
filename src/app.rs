@@ -3170,8 +3170,8 @@ pub struct App {
     /// Last successfully invoked command reached through the effective leader
     /// namespace. The semantic invocation is replayed against current state;
     /// window-prefix aliases never enter this history.
-    /// Live `goto-word` jump labels, painted over the active pane until two
-    /// keystrokes name one or a stray key spends them.
+    /// Live `goto-word`/`leap` input and labels. Query and label keystrokes
+    /// share one lifetime, including cancellation by non-character input.
     pub jump: Option<JumpLabels>,
     /// Live line selection from `x`/`X`, holding the mode to restore when it
     /// ends. Unlike `v`, a line selection is transient: it survives only

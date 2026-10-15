@@ -2928,8 +2928,7 @@ fn goto_word_labels_visible_words_and_one_key_jumps_to_a_nearby_target() {
     app.active_mut().wrap_width = 80;
     set_cursor(&mut app, 0, 0);
 
-    press(&mut app, 'g');
-    press(&mut app, 'w');
+    app.execute_editor_command(EditorCommand::GotoWord).unwrap();
     let labels = app.jump.as_ref().unwrap();
     // `alpha`, `beta`, and `gamma` earn labels; the one-character `x` has
     // nowhere to put one.
@@ -2957,8 +2956,7 @@ fn goto_word_gives_distant_targets_prefix_free_two_key_labels() {
     app.active_mut().wrap_width = 100;
     set_cursor(&mut app, 0, 39);
 
-    press(&mut app, 'g');
-    press(&mut app, 'w');
+    app.execute_editor_command(EditorCommand::GotoWord).unwrap();
     let labels = app.jump.as_ref().unwrap();
     assert_eq!(labels.len(), 27);
     assert_eq!(labels.label_at(39), Some(('a', LabelPart::Immediate)));
@@ -2982,8 +2980,7 @@ fn goto_word_keeps_a_fitting_one_key_target_at_the_right_edge() {
     seed(&mut app, "xxxxx aa");
     app.active_mut().wrap_width = 7;
 
-    press(&mut app, 'g');
-    press(&mut app, 'w');
+    app.execute_editor_command(EditorCommand::GotoWord).unwrap();
     let labels = app.jump.as_ref().unwrap();
     assert_eq!(labels.len(), 2);
     assert_eq!(labels.label_at(6), Some(('s', LabelPart::Immediate)));
@@ -2997,8 +2994,7 @@ fn goto_word_drops_a_two_key_target_that_crosses_the_right_edge() {
     seed(&mut app, &line);
     app.active_mut().wrap_width = 79;
 
-    press(&mut app, 'g');
-    press(&mut app, 'w');
+    app.execute_editor_command(EditorCommand::GotoWord).unwrap();
     let labels = app.jump.as_ref().unwrap();
     assert_eq!(labels.len(), 26);
     assert_eq!(labels.label_at(78), None);
@@ -3010,8 +3006,7 @@ fn goto_word_right_edge_is_measured_in_terminal_cells() {
     seed(&mut app, "界界 aa bb");
     app.active_mut().wrap_width = 7;
 
-    press(&mut app, 'g');
-    press(&mut app, 'w');
+    app.execute_editor_command(EditorCommand::GotoWord).unwrap();
     let labels = app.jump.as_ref().unwrap();
     assert_eq!(labels.len(), 1);
     assert!(labels.label_at(3).is_some());
@@ -3024,8 +3019,7 @@ fn goto_word_right_edge_accounts_for_tabs() {
     seed(&mut app, "\t\t aa bb");
     app.active_mut().wrap_width = 11;
 
-    press(&mut app, 'g');
-    press(&mut app, 'w');
+    app.execute_editor_command(EditorCommand::GotoWord).unwrap();
     let labels = app.jump.as_ref().unwrap();
     assert_eq!(labels.len(), 1);
     assert!(labels.label_at(3).is_some());
@@ -3039,8 +3033,7 @@ fn goto_word_excludes_words_past_a_horizontally_scrolled_view() {
     app.active_mut().scroll_col = 6;
     app.active_mut().wrap_width = 5;
 
-    press(&mut app, 'g');
-    press(&mut app, 'w');
+    app.execute_editor_command(EditorCommand::GotoWord).unwrap();
     let labels = app.jump.as_ref().unwrap();
     assert_eq!(labels.len(), 2);
     assert!(labels.label_at(6).is_some());
@@ -3055,14 +3048,12 @@ fn goto_word_labels_are_spent_by_anything_that_is_not_a_label() {
     app.active_mut().wrap_width = 80;
     set_cursor(&mut app, 0, 0);
 
-    press(&mut app, 'g');
-    press(&mut app, 'w');
+    app.execute_editor_command(EditorCommand::GotoWord).unwrap();
     key(&mut app, KeyCode::Escape, Modifiers::NONE);
     assert!(app.jump.is_none());
     assert_eq!(cursor(&app), Position::default());
 
-    press(&mut app, 'g');
-    press(&mut app, 'w');
+    app.execute_editor_command(EditorCommand::GotoWord).unwrap();
     // Only `a` and `s` are labels here, so `z` names nothing.
     press(&mut app, 'z');
     assert!(app.jump.is_none());
@@ -3078,8 +3069,7 @@ fn goto_word_extends_the_selection_in_select_mode() {
     set_cursor(&mut app, 0, 0);
 
     press(&mut app, 'v');
-    press(&mut app, 'g');
-    press(&mut app, 'w');
+    app.execute_editor_command(EditorCommand::GotoWord).unwrap();
     press(&mut app, 's');
     let range = app.active().selection.primary();
     assert_eq!((range.anchor, range.head), (0, 6));
@@ -3094,8 +3084,7 @@ fn goto_word_leaves_double_width_words_unlabelled() {
     seed(&mut app, "你好 hello");
     app.active_mut().wrap_width = 80;
 
-    press(&mut app, 'g');
-    press(&mut app, 'w');
+    app.execute_editor_command(EditorCommand::GotoWord).unwrap();
     let labels = app.jump.as_ref().unwrap();
     // A label drawn over two double-width characters would occupy half the
     // cells they do and pull the rest of the row leftwards, so that word
@@ -3110,8 +3099,7 @@ fn goto_word_reports_when_there_is_nothing_to_label() {
     seed(&mut app, "a b c");
     app.active_mut().wrap_width = 80;
 
-    press(&mut app, 'g');
-    press(&mut app, 'w');
+    app.execute_editor_command(EditorCommand::GotoWord).unwrap();
     assert!(app.jump.is_none());
     assert!(app.status_error);
 }

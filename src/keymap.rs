@@ -1503,7 +1503,7 @@ fn built_in_bindings() -> Vec<Binding> {
             Command::GotoPreviousParagraph,
         ),
         modal([Key::char('g'), Key::char('f')], Command::GotoFile),
-        modal([Key::char('g'), Key::char('w')], Command::GotoWord),
+        modal([Key::char('g'), Key::char('w')], Command::Leap),
         modal([Key::char('g'), Key::char('d')], Command::GotoDefinition),
         modal([Key::char('g'), Key::char('D')], Command::GotoDeclaration),
         modal(
