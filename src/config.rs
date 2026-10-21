@@ -436,7 +436,21 @@ pub struct EditorConfig {
     pub soft_wrap: bool,
     /// Wrap rendered Markdown regardless of `soft_wrap`; false follows that setting.
     pub always_wrap_rendered_markdown: bool,
-    /// Draw visible markers for spaces, tabs, and line terminators.
+    /// Draw `·` in place of spaces. An omitted value follows
+    /// `render_whitespace`.
+    pub render_space: Option<bool>,
+    /// Draw `→` in the first cell of a tab. An omitted value follows
+    /// `render_whitespace`.
+    pub render_tab: Option<bool>,
+    /// Draw `¬` at each line ending. An omitted value follows
+    /// `render_whitespace`.
+    pub render_newline: Option<bool>,
+    /// The original single switch for all three whitespace markers.
+    ///
+    /// New configurations use `render_space`, `render_tab`, and
+    /// `render_newline`. Each of those falls back to this value when omitted,
+    /// so a configuration written before they were separable keeps drawing
+    /// every marker it used to.
     pub render_whitespace: bool,
     /// Maximum text width of the centred viewport used by `:zen`.
     pub zen_width: usize,
@@ -1003,6 +1017,9 @@ impl Default for EditorConfig {
             explorer_details: false,
             soft_wrap: false,
             always_wrap_rendered_markdown: true,
+            render_space: None,
+            render_tab: None,
+            render_newline: None,
             render_whitespace: false,
             zen_width: 100,
             hard_wrap_width: 80,
@@ -1017,6 +1034,47 @@ impl Default for EditorConfig {
             terminal_theme_colors: true,
             auto_close_terminal: true,
         }
+    }
+}
+
+/// Which display-only whitespace markers a pane draws.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct WhitespaceMarkers {
+    pub space: bool,
+    pub tab: bool,
+    pub newline: bool,
+}
+
+impl WhitespaceMarkers {
+    /// True when all three markers are on, which is what `Space p .` switches
+    /// off together.
+    pub const fn all(self) -> bool {
+        self.space && self.tab && self.newline
+    }
+
+    /// True when any marker is on.
+    pub const fn any(self) -> bool {
+        self.space || self.tab || self.newline
+    }
+}
+
+impl EditorConfig {
+    /// Resolves the three marker switches, falling back to the original
+    /// `render_whitespace` switch for any setting left out.
+    pub fn whitespace_markers(&self) -> WhitespaceMarkers {
+        let fallback = self.render_whitespace;
+        WhitespaceMarkers {
+            space: self.render_space.unwrap_or(fallback),
+            tab: self.render_tab.unwrap_or(fallback),
+            newline: self.render_newline.unwrap_or(fallback),
+        }
+    }
+
+    /// Turns all three markers on or off explicitly, as `Space p .` does.
+    pub fn set_whitespace_markers(&mut self, enabled: bool) {
+        self.render_space = Some(enabled);
+        self.render_tab = Some(enabled);
+        self.render_newline = Some(enabled);
     }
 }
 
@@ -4370,10 +4428,79 @@ mod tests {
     }
 
     #[test]
-    fn whitespace_rendering_is_default_off_and_configurable() {
-        assert!(!Config::default().editor.render_whitespace);
-        let config: Config = serde_yaml::from_str("editor:\n  render_whitespace: true\n").unwrap();
-        assert!(config.editor.render_whitespace);
+    fn whitespace_marker_kinds_are_default_off_and_independently_configurable() {
+        let defaults = Config::default().editor.whitespace_markers();
+        assert_eq!(defaults, crate::config::WhitespaceMarkers::default());
+
+        // The original single switch still turns every marker on, so a
+        // configuration written before the kinds were separable keeps its
+        // behavior.
+        let legacy: Config = serde_yaml::from_str("editor:\n  render_whitespace: true\n").unwrap();
+        assert_eq!(
+            legacy.editor.whitespace_markers(),
+            crate::config::WhitespaceMarkers {
+                space: true,
+                tab: true,
+                newline: true,
+            }
+        );
+
+        let space_only: Config = serde_yaml::from_str("editor:\n  render_space: true\n").unwrap();
+        assert_eq!(
+            space_only.editor.whitespace_markers(),
+            crate::config::WhitespaceMarkers {
+                space: true,
+                tab: false,
+                newline: false,
+            }
+        );
+
+        let tab_and_newline: Config =
+            serde_yaml::from_str("editor:\n  render_tab: true\n  render_newline: true\n").unwrap();
+        assert_eq!(
+            tab_and_newline.editor.whitespace_markers(),
+            crate::config::WhitespaceMarkers {
+                space: false,
+                tab: true,
+                newline: true,
+            }
+        );
+
+        // An explicit value wins over the legacy switch for its own kind
+        // without disturbing the other two.
+        let overridden: Config = serde_yaml::from_str(
+            "editor:\n  render_whitespace: true\n  render_tab: false\n  render_newline: false\n",
+        )
+        .unwrap();
+        assert_eq!(
+            overridden.editor.whitespace_markers(),
+            crate::config::WhitespaceMarkers {
+                space: true,
+                tab: false,
+                newline: false,
+            }
+        );
+    }
+
+    #[test]
+    fn set_whitespace_markers_switches_all_three_kinds_together() {
+        let mut editor = EditorConfig::default();
+        editor.set_whitespace_markers(true);
+        assert_eq!(
+            editor.whitespace_markers(),
+            crate::config::WhitespaceMarkers {
+                space: true,
+                tab: true,
+                newline: true,
+            }
+        );
+        assert!(editor.whitespace_markers().all());
+        editor.set_whitespace_markers(false);
+        assert_eq!(
+            editor.whitespace_markers(),
+            crate::config::WhitespaceMarkers::default()
+        );
+        assert!(!editor.whitespace_markers().any());
     }
 
     #[test]

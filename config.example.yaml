@@ -26,8 +26,11 @@ editor:
   soft_wrap: false
   # When false, rendered Markdown follows soft_wrap. Source is unaffected.
   always_wrap_rendered_markdown: true
-  # Draw spaces as ·, tabs from →, and line endings as ¬.
-  render_whitespace: false
+  # Draw spaces as ·, tabs from →, and line endings as ¬. Each can be on
+  # independently. The older render_whitespace switch still sets all three.
+  render_space: false
+  render_tab: false
+  render_newline: false
   zen_width: 100
   hard_wrap_width: 80
   # The scratch buffer names no language, so Space p r refills it as Markdown

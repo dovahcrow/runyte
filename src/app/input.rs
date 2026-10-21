@@ -4711,8 +4711,9 @@ impl App {
                 self.status(message);
             }
             Command::ToggleWhitespace => {
-                self.config.editor.render_whitespace = !self.config.editor.render_whitespace;
-                self.status(if self.config.editor.render_whitespace {
+                let enabled = !self.config.editor.whitespace_markers().all();
+                self.config.editor.set_whitespace_markers(enabled);
+                self.status(if enabled {
                     "whitespace markers enabled"
                 } else {
                     "whitespace markers disabled"

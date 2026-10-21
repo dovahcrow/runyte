@@ -14,7 +14,7 @@ use crate::{
     app::{App, MaximizedView, Mode, PreparedPane, PreparedView, PromptKind},
     buffer::{Buffer, BufferKind, ExternalFileStatus, GeneratedViewIdentity, Position},
     command::EditorCommand,
-    config::Theme,
+    config::{Theme, WhitespaceMarkers},
     diff::Change,
     git::{CountKind, DiffLine, LineChange},
     jump_labels::LabelPart,
@@ -809,7 +809,7 @@ struct PaneSnapshotKey {
     tab_width: usize,
     line_numbers: bool,
     relative_line_numbers: bool,
-    render_whitespace: bool,
+    whitespace_markers: WhitespaceMarkers,
     command_mode_dim: bool,
     row_hints: RowHints,
     directory: bool,
@@ -1039,7 +1039,7 @@ impl App {
             tab_width: self.indentation_for(prepared.buffer_id).tab_width,
             line_numbers: self.config.editor.line_numbers,
             relative_line_numbers: self.config.editor.relative_line_numbers,
-            render_whitespace: self.config.editor.render_whitespace,
+            whitespace_markers: self.config.editor.whitespace_markers(),
             command_mode_dim: self.config.editor.command_mode_dim,
             row_hints: buffer.row_hints(),
             directory: buffer.is_directory(),
@@ -1507,6 +1507,7 @@ impl App {
         context: RowContext,
     ) -> Vec<TextRun> {
         let tab_width = self.indentation_for(prepared.buffer_id).tab_width;
+        let whitespace_markers = self.config.editor.whitespace_markers();
         let pane = &self.panes[&prepared.pane_id];
         let active = prepared.pane_id == self.active_pane;
         let row_start = buffer.line_to_offset(context.row);
@@ -1630,8 +1631,11 @@ impl App {
                     }
                 }
                 let whitespace = offset.is_some()
-                    && self.config.editor.render_whitespace
-                    && matches!(atom.ch, ' ' | '\t');
+                    && match atom.ch {
+                        ' ' => whitespace_markers.space,
+                        '\t' => whitespace_markers.tab,
+                        _ => false,
+                    };
                 let kind = offset.and_then(&label_at).map_or_else(
                     || TextRunKind::Text {
                         role,
@@ -1765,8 +1769,11 @@ impl App {
             let scope = scope_at(row_start + col);
             let diagnostic = flagged_at(row_start + col);
             let count = counts.as_ref().and_then(|columns| columns.kind_at(col));
-            let whitespace =
-                self.config.editor.render_whitespace && matches!(character, ' ' | '\t');
+            let whitespace = match character {
+                ' ' => whitespace_markers.space,
+                '\t' => whitespace_markers.tab,
+                _ => false,
+            };
             if (role != current_role
                 || scope != current_scope
                 || diagnostic != current_diagnostic
@@ -1798,7 +1805,7 @@ impl App {
                 }
                 let tab_width = tab_width.max(1);
                 let width = (tab_width - (visual_col % tab_width)).min(remaining);
-                if self.config.editor.render_whitespace {
+                if whitespace {
                     current.push('→');
                     current.push_str(&" ".repeat(width.saturating_sub(1)));
                 } else {
@@ -1836,7 +1843,7 @@ impl App {
             .is_none_or(|segment| segment.end == buffer.line_len(context.row));
         let has_terminator = buffer.text().line(context.row).len_chars() > line_len;
         let ending_label = label_at(row_start + line_len);
-        let ending_cell = (self.config.editor.render_whitespace || ending_label.is_some())
+        let ending_cell = (whitespace_markers.newline || ending_label.is_some())
             && final_segment
             && drawn_end == line_len
             && has_terminator
@@ -1846,8 +1853,7 @@ impl App {
                 .sum::<usize>()
                 < context.text_width;
         let ending_label = ending_label.filter(|_| ending_cell);
-        let ending_marker =
-            self.config.editor.render_whitespace && ending_cell && ending_label.is_none();
+        let ending_marker = whitespace_markers.newline && ending_cell && ending_label.is_none();
         if let Some((label, part)) = ending_label {
             runs.push(TextRun {
                 text: label.to_string(),
@@ -2585,6 +2591,35 @@ mod tests {
                 .collect::<String>(),
             "a   b"
         );
+    }
+
+    #[test]
+    fn whitespace_marker_kinds_are_rendered_independently() {
+        fn first_row(app: &mut App) -> String {
+            let snapshot = prepared_snapshot(app, 20, 8);
+            let SnapshotRow::Text(first) = &snapshot.pane(0).unwrap().rows[0] else {
+                panic!("first row is text");
+            };
+            first.runs.iter().map(|run| run.text.as_str()).collect()
+        }
+
+        let mut config = Config::default();
+        config.editor.line_numbers = false;
+        config.editor.tab_width = 4;
+        config.editor.render_space = Some(true);
+        config.editor.render_tab = Some(false);
+        config.editor.render_newline = Some(false);
+        let mut app = App::new(config, None).unwrap();
+        app.buffers[0].apply(&Transaction::insert(0, "a \tb\nlast"));
+        assert_eq!(first_row(&mut app), "a·  b");
+
+        app.config.editor.render_space = Some(false);
+        app.config.editor.render_tab = Some(true);
+        assert_eq!(first_row(&mut app), "a → b");
+
+        app.config.editor.render_tab = Some(false);
+        app.config.editor.render_newline = Some(true);
+        assert_eq!(first_row(&mut app), "a   b¬");
     }
 
     #[test]
@@ -3742,29 +3777,35 @@ mod tests {
         app.theme.background = crate::config::Color::White;
         let _ = prepared_snapshot(&mut app, 100, 40);
         assert_eq!(app.visible_pane_rebuilds.get(), 5);
-        app.config.editor.render_whitespace = true;
+        app.config.editor.render_space = Some(true);
         let _ = prepared_snapshot(&mut app, 100, 40);
         assert_eq!(app.visible_pane_rebuilds.get(), 6);
+        app.config.editor.render_tab = Some(true);
+        let _ = prepared_snapshot(&mut app, 100, 40);
+        assert_eq!(app.visible_pane_rebuilds.get(), 7);
+        app.config.editor.render_newline = Some(true);
+        let _ = prepared_snapshot(&mut app, 100, 40);
+        assert_eq!(app.visible_pane_rebuilds.get(), 8);
         let language = app.registry.language_for_name("lua").unwrap();
         app.syntax[0] =
             crate::syntax::DocumentSyntax::new(app.buffers[0].text(), language, &app.registry);
         let _ = prepared_snapshot(&mut app, 100, 40);
-        assert_eq!(app.visible_pane_rebuilds.get(), 7);
+        assert_eq!(app.visible_pane_rebuilds.get(), 9);
         app.mode = Mode::Select;
         let _ = prepared_snapshot(&mut app, 100, 40);
-        assert_eq!(app.visible_pane_rebuilds.get(), 8);
+        assert_eq!(app.visible_pane_rebuilds.get(), 10);
 
         let path = std::path::PathBuf::from("/tmp/runyte-pane-cache-diagnostic.lua");
         app.buffers[0].path = Some(path.clone());
         let _ = prepared_snapshot(&mut app, 100, 40);
-        assert_eq!(app.visible_pane_rebuilds.get(), 9);
+        assert_eq!(app.visible_pane_rebuilds.get(), 11);
         app.diagnostics.set(
             "lua",
             path,
             vec![crate::lsp::Diagnostic::new(Default::default())],
         );
         let diagnosed = prepared_snapshot(&mut app, 100, 40);
-        assert_eq!(app.visible_pane_rebuilds.get(), 10);
+        assert_eq!(app.visible_pane_rebuilds.get(), 12);
         assert!(matches!(
             &diagnosed.pane(inactive).unwrap().rows[0],
             SnapshotRow::Text(row) if row.diagnostic_sign == Some(Severity::Error)

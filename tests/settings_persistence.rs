@@ -139,6 +139,47 @@ fn an_unclosed_brace_in_a_plain_theme_name_cannot_consume_other_fields() {
 }
 
 #[test]
+fn whitespace_marker_kinds_persist_independently_beside_the_legacy_switch() {
+    let source = "editor:\n  render_whitespace: true\n";
+    let file = ConfigFile::new(source);
+    let changes = [
+        (SettingId::EditorRenderSpace, false),
+        (SettingId::EditorRenderTab, false),
+        (SettingId::EditorRenderNewline, true),
+    ];
+    let mut config = None;
+    for (setting, enabled) in changes {
+        let updated = persist_setting(&file.0, setting, &SettingValue::Boolean(enabled)).unwrap();
+        assert_eq!(
+            setting.configured_value(&updated),
+            SettingValue::Boolean(enabled)
+        );
+        config = Some(updated);
+    }
+
+    // The legacy switch stays in place, while each explicit value overrides
+    // it for its own marker kind only.
+    let markers = config.unwrap().editor.whitespace_markers();
+    assert_eq!(
+        markers,
+        runyte::config::WhitespaceMarkers {
+            space: false,
+            tab: false,
+            newline: true,
+        }
+    );
+    let text = file.text();
+    assert!(text.starts_with(source), "{text}");
+    for key in [
+        "render_space: false",
+        "render_tab: false",
+        "render_newline: true",
+    ] {
+        assert!(text.contains(key), "{text}");
+    }
+}
+
+#[test]
 fn terminal_theme_colors_persist_without_changing_custom_palette() {
     let source = "themes:\n  custom:\n    terminal: {red: '#123456'}\n";
     let file = ConfigFile::new(source);

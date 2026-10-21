@@ -492,16 +492,38 @@ fn wrapping_namespace_wraps_and_toggles_soft_wrap_and_whitespace_markers() {
     }
     assert!(app.config.editor.soft_wrap);
 
-    assert!(!app.config.editor.render_whitespace);
+    assert_eq!(
+        app.config.editor.whitespace_markers(),
+        crate::config::WhitespaceMarkers::default()
+    );
     for stroke in [' ', 'p', '.'] {
         press(&mut app, stroke);
     }
-    assert!(app.config.editor.render_whitespace);
+    assert_eq!(
+        app.config.editor.whitespace_markers(),
+        crate::config::WhitespaceMarkers {
+            space: true,
+            tab: true,
+            newline: true,
+        }
+    );
     assert!(app.status.contains("whitespace markers enabled"));
+
+    // A partly enabled set turns all the markers on rather than off.
+    app.config.editor.render_tab = Some(false);
     for stroke in [' ', 'p', '.'] {
         press(&mut app, stroke);
     }
-    assert!(!app.config.editor.render_whitespace);
+    assert!(app.config.editor.whitespace_markers().all());
+    assert!(app.status.contains("whitespace markers enabled"));
+
+    for stroke in [' ', 'p', '.'] {
+        press(&mut app, stroke);
+    }
+    assert_eq!(
+        app.config.editor.whitespace_markers(),
+        crate::config::WhitespaceMarkers::default()
+    );
     assert!(app.status.contains("whitespace markers disabled"));
 }
 

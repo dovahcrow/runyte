@@ -49,7 +49,9 @@ pub enum SettingId {
     EditorExplorerDetails,
     EditorSoftWrap,
     EditorAlwaysWrapRenderedMarkdown,
-    EditorRenderWhitespace,
+    EditorRenderSpace,
+    EditorRenderTab,
+    EditorRenderNewline,
     EditorZenWidth,
     EditorHardWrapWidth,
     EditorScratchMarkdown,
@@ -272,10 +274,28 @@ const DESCRIPTORS: &[SettingDescriptor] = &[
         persistence: PersistencePolicy::ConfigFile,
     },
     SettingDescriptor {
-        id: SettingId::EditorRenderWhitespace,
-        key: "editor.render_whitespace",
-        title: "Whitespace markers",
-        description: "Show spaces, tabs, and line terminators",
+        id: SettingId::EditorRenderSpace,
+        key: "editor.render_space",
+        title: "Space markers",
+        description: "Draw · in place of spaces",
+        value_type: SettingType::Boolean,
+        preview: PreviewPolicy::Immediate,
+        persistence: PersistencePolicy::ConfigFile,
+    },
+    SettingDescriptor {
+        id: SettingId::EditorRenderTab,
+        key: "editor.render_tab",
+        title: "Tab markers",
+        description: "Draw → in the first cell of a tab",
+        value_type: SettingType::Boolean,
+        preview: PreviewPolicy::Immediate,
+        persistence: PersistencePolicy::ConfigFile,
+    },
+    SettingDescriptor {
+        id: SettingId::EditorRenderNewline,
+        key: "editor.render_newline",
+        title: "Line ending markers",
+        description: "Draw ¬ at line endings",
         value_type: SettingType::Boolean,
         preview: PreviewPolicy::Immediate,
         persistence: PersistencePolicy::ConfigFile,
@@ -490,7 +510,9 @@ impl SettingId {
         Self::EditorExplorerDetails,
         Self::EditorSoftWrap,
         Self::EditorAlwaysWrapRenderedMarkdown,
-        Self::EditorRenderWhitespace,
+        Self::EditorRenderSpace,
+        Self::EditorRenderTab,
+        Self::EditorRenderNewline,
         Self::EditorZenWidth,
         Self::EditorHardWrapWidth,
         Self::EditorScratchMarkdown,
@@ -559,7 +581,13 @@ impl SettingId {
             Self::EditorAlwaysWrapRenderedMarkdown => {
                 SettingValue::Boolean(config.editor.always_wrap_rendered_markdown)
             }
-            Self::EditorRenderWhitespace => SettingValue::Boolean(config.editor.render_whitespace),
+            Self::EditorRenderSpace => {
+                SettingValue::Boolean(config.editor.whitespace_markers().space)
+            }
+            Self::EditorRenderTab => SettingValue::Boolean(config.editor.whitespace_markers().tab),
+            Self::EditorRenderNewline => {
+                SettingValue::Boolean(config.editor.whitespace_markers().newline)
+            }
             Self::EditorZenWidth => SettingValue::Integer(config.editor.zen_width),
             Self::EditorHardWrapWidth => SettingValue::Integer(config.editor.hard_wrap_width),
             Self::EditorScratchMarkdown => SettingValue::Boolean(config.editor.scratch_markdown),
@@ -708,8 +736,14 @@ impl SettingId {
             (Self::EditorSoftWrap, SettingValue::Boolean(value)) => {
                 config.editor.soft_wrap = *value;
             }
-            (Self::EditorRenderWhitespace, SettingValue::Boolean(value)) => {
-                config.editor.render_whitespace = *value;
+            (Self::EditorRenderSpace, SettingValue::Boolean(value)) => {
+                config.editor.render_space = Some(*value);
+            }
+            (Self::EditorRenderTab, SettingValue::Boolean(value)) => {
+                config.editor.render_tab = Some(*value);
+            }
+            (Self::EditorRenderNewline, SettingValue::Boolean(value)) => {
+                config.editor.render_newline = Some(*value);
             }
             (Self::EditorZenWidth, SettingValue::Integer(value)) => {
                 config.editor.zen_width = *value;

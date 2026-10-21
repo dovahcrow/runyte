@@ -1366,8 +1366,14 @@ lines.
 | LF or CRLF line ending | one `¬` |
 
 An unterminated final line has no marker. The markers are display-only: text,
-offsets, selections, wrapping, and saved files are unchanged. The setting is
-`editor.render_whitespace`.
+offsets, selections, wrapping, and saved files are unchanged.
+
+Each kind can be shown independently with
+`editor.render_space`, `editor.render_tab`, and `editor.render_newline`.
+`Space p .` switches all three together; it turns them all on unless they are
+all already on. The older `editor.render_whitespace` setting is still read as
+the fallback for any of the three that is omitted, so a configuration that
+enabled it keeps showing every marker it did before.
 
 #### Soft wrap
 
@@ -6265,7 +6271,9 @@ file-only.
 | `editor.explorer_details` | `false` | boolean | Show `ls -l` style mode, owner, size, and time columns. `?` toggles it in an explorer. |
 | `editor.soft_wrap` | `false` | boolean | Wrap long lines visually without changing the text. |
 | `editor.always_wrap_rendered_markdown` | `true` | boolean | Always wrap rendered Markdown pages, including rendered scratchpads. When false, follow `editor.soft_wrap`. Does not affect Markdown source. |
-| `editor.render_whitespace` | `false` | boolean | Show `·` for spaces, `→` for tabs, and `¬` for line endings. |
+| `editor.render_space` | `false` | boolean | Show `·` for spaces. Falls back to `editor.render_whitespace` when omitted. |
+| `editor.render_tab` | `false` | boolean | Show `→` for tabs. Falls back to `editor.render_whitespace` when omitted. |
+| `editor.render_newline` | `false` | boolean | Show `¬` for line endings. Falls back to `editor.render_whitespace` when omitted. |
 | `editor.zen_width` | `100` | 1–1000 | Maximum text width while `:zen` is active. |
 | `editor.hard_wrap_width` | `80` | 1–1000 | Width used by `Space p w` (hard wrap) and `Space p r` (reflow). |
 | `editor.scratch_markdown` | `true` | boolean | Treat the pathless scratch buffer as Markdown for `Space p r` and `?`. |
