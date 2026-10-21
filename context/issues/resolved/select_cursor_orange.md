@@ -23,8 +23,9 @@ palette.
 
 A later presentation revision added `selection_primary` as the light-orange
 background paired with that cursor. It also limits pristine search results to
-one orange primary cursor, while ordinary transformed multi-selections retain
-an orange endpoint on every range.
+one visible primary cursor. A subsequent multi-selection presentation makes
+that primary cursor a red cell background with its character visible whenever more than one selection
+exists, while secondary carets keep their own theme colour.
 
 `default-dark` and `default-light` later left that orange behind. Both now use
 pink for Select — `#f07ab4` on the dark ground and `#a4276f` on the light one —

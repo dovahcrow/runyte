@@ -144,6 +144,8 @@ unit_enum!(
         ReplaceCaret,
         Caret,
         SecondaryCaret,
+        MultiPrimaryCaret,
+        MultiReplaceCaret,
     ]
 );
 unit_enum!(Severity, CoreSeverity, [Hint, Information, Warning, Error]);

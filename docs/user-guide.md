@@ -1203,10 +1203,10 @@ all of them.
 
 - Each match is selected in full, with the cursor on its last character, where
   an append or a motion continues from.
-- The primary match has the primary-selection ground and one cursor in the
-  Select colour (pink in `ember-dark` and `ember-light`, orange in most other
-  built-in themes). Other matches keep the secondary selection colour without
-  cursors.
+- The primary match has the primary-selection ground and one red cursor when
+  the search finds multiple matches. Other matches keep the secondary
+  selection colour without cursors. A single match keeps the Select cursor
+  colour.
 - The status line shows the primary's position among the results.
 
 **Then:**
@@ -7511,8 +7511,10 @@ Each colours the primary caret and the status line's mode label in its mode.
 | `cursor_command` | Command | `info` |
 | `cursor_secondary` | Secondary carets in a multi-selection | `foreground` |
 
-- The primary caret keeps its mode colour in a multi-selection, or the pending
-  replacement colour.
+- When more than one selection exists, the primary caret has a red cell background
+  with the underlying character still visible in a contrasting colour.
+  Secondary carets keep their usual solid theme-coloured blocks. A single
+  cursor keeps its mode colour.
 - If the terminal draws `cursor_secondary` the same as a primary caret,
   Runyte picks another available colour.
 

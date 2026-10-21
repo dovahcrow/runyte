@@ -58,9 +58,11 @@ them, regardless of which extensibility direction is chosen.
   independently before scrolling buffer text, keeping every metadata field
   reachable without assigning the prefix document coordinates.
 - **Primary caret** — the caret at the primary selection. In a multi-selection
-  it keeps its mode or pending-replacement colour; other carets use the theme's
-  secondary caret colour. Changing which selection is primary moves that
-  colour to the new primary caret without changing the ranges.
+  it has a red cell background with its underlying character visible; other
+  carets retain their solid blocks in the theme's secondary caret colour.
+  Changing which selection is primary moves the red caret without changing the
+  ranges. A lone caret keeps its mode
+  or pending-replacement colour.
 - **Global status line** — the first global row below the editor area. It owns
   mode, workspace directory, active-buffer state, cursor/progress, selection
   count, Git/LSP summaries, long-running action progress, and unread
@@ -780,3 +782,6 @@ the absolute number; wrapped continuations retain arrows and folded document
 lines count toward distances. `editor.line_numbers` still controls gutter
 number visibility. Private bundled-client protocol version 73 carries the
 per-pane document-row origin, including when the cursor is outside the viewport.
+Private bundled-client protocol version 74 distinguishes the red primary
+caret in a multi-selection from a single mode-coloured caret, including while a
+replacement character is pending.

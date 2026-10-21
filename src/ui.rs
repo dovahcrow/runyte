@@ -2708,6 +2708,8 @@ fn snapshot_line(
                     TextRole::Caret
                         | TextRole::PrimaryCaret
                         | TextRole::ReplaceCaret
+                        | TextRole::MultiPrimaryCaret
+                        | TextRole::MultiReplaceCaret
                         | TextRole::SecondaryCaret
                         | TextRole::Selected
                         | TextRole::PrimarySelected
@@ -2849,6 +2851,9 @@ fn text_run_style(
         TextRole::SecondaryCaret => Style::default()
             .fg(theme.background)
             .bg(theme.cursor_secondary),
+        TextRole::MultiPrimaryCaret | TextRole::MultiReplaceCaret => Style::default()
+            .fg(theme.background)
+            .bg(ratatui::style::Color::Red),
     };
     // Emphasis belongs to the scope rather than to the theme: bold text is
     // bold in every palette, and a theme that gives `markup.bold` no colour of
@@ -2869,6 +2874,8 @@ fn text_run_style(
                 TextRole::PrimaryCaret
                     | TextRole::ReplaceCaret
                     | TextRole::Caret
+                    | TextRole::MultiPrimaryCaret
+                    | TextRole::MultiReplaceCaret
                     | TextRole::SecondaryCaret
             ) =>
         {
@@ -5361,7 +5368,7 @@ mod tests {
     }
 
     #[test]
-    fn rotating_a_multiselection_moves_the_mode_colored_caret() {
+    fn rotating_a_multiselection_moves_the_red_primary_caret() {
         let mut app = App::new(Config::default(), None).unwrap();
         app.buffers[0].apply(&Transaction::insert(0, "x\ny"));
         let hints = KeyHintState::default();
@@ -5380,30 +5387,24 @@ mod tests {
                 terminal
                     .draw(|frame| render_test_frame(frame, &mut app, &hints))
                     .unwrap();
-                for (index, symbol) in ["x", "y"].into_iter().enumerate() {
-                    let cell = terminal
-                        .backend()
-                        .buffer()
-                        .content
-                        .iter()
-                        .find(|cell| cell.symbol() == symbol)
-                        .unwrap();
-                    let expected = if index != primary {
-                        app.theme.cursor_secondary
-                    } else {
-                        match mode {
-                            Mode::Normal => app.theme.cursor_normal,
-                            Mode::Insert => app.theme.cursor_insert,
-                            Mode::Select => app.theme.cursor_select,
-                            _ => unreachable!(),
-                        }
-                    };
-                    assert_eq!(
-                        cell.style().bg,
-                        Some(to_tui_color(expected)),
-                        "{mode:?} {symbol}"
-                    );
-                }
+                let cells = &terminal.backend().buffer().content;
+                let primary_cell = cells
+                    .iter()
+                    .find(|cell| cell.symbol() == ["x", "y"][primary])
+                    .unwrap();
+                assert_eq!(primary_cell.style().bg, Some(ratatui::style::Color::Red));
+                assert_eq!(
+                    primary_cell.style().fg,
+                    Some(to_tui_color(app.theme.background))
+                );
+                let secondary_cell = cells
+                    .iter()
+                    .find(|cell| cell.symbol() == ["y", "x"][primary])
+                    .unwrap();
+                assert_eq!(
+                    secondary_cell.style().bg,
+                    Some(to_tui_color(app.theme.cursor_secondary))
+                );
             }
         }
     }
@@ -7444,9 +7445,8 @@ mod tests {
         assert_eq!(
             insert_carets
                 .iter()
-                .filter(
-                    |cell| cell.style().bg == Some(to_tui_color(insert_multi.theme.cursor_insert))
-                )
+                .filter(|cell| cell.style().bg == Some(ratatui::style::Color::Red)
+                    && cell.style().fg == Some(to_tui_color(insert_multi.theme.background)))
                 .count(),
             1
         );
@@ -7457,6 +7457,50 @@ mod tests {
                     == Some(to_tui_color(insert_multi.theme.cursor_secondary)))
                 .count(),
             1
+        );
+    }
+
+    #[test]
+    fn adjacent_secondary_carets_keep_their_solid_theme_blocks() {
+        let mut app = App::new(Config::default(), None).unwrap();
+        app.buffers[0].apply(&Transaction::insert(0, "xyz"));
+        app.panes.get_mut(&0).unwrap().selection = Selection::new(
+            vec![
+                crate::selection::Range::point(0),
+                crate::selection::Range::point(1),
+                crate::selection::Range::point(2),
+            ],
+            0,
+        );
+        let mut terminal = Terminal::new(TestBackend::new(40, 8)).unwrap();
+        terminal
+            .draw(|frame| render_test_frame(frame, &mut app, &KeyHintState::default()))
+            .unwrap();
+        let cells = &terminal.backend().buffer().content;
+        let primary = cells.iter().find(|cell| cell.symbol() == "x").unwrap();
+        assert_eq!(primary.style().bg, Some(ratatui::style::Color::Red));
+        assert_eq!(primary.style().fg, Some(to_tui_color(app.theme.background)));
+        for symbol in ["y", "z"] {
+            let cell = cells.iter().find(|cell| cell.symbol() == symbol).unwrap();
+            assert_eq!(
+                cell.style().bg,
+                Some(to_tui_color(app.theme.cursor_secondary))
+            );
+        }
+        app.panes.get_mut(&0).unwrap().selection = Selection::point(0);
+        terminal
+            .draw(|frame| render_test_frame(frame, &mut app, &KeyHintState::default()))
+            .unwrap();
+        let cells = &terminal.backend().buffer().content;
+        assert!(
+            !cells
+                .iter()
+                .any(|cell| cell.style().bg == Some(ratatui::style::Color::Red))
+        );
+        let caret = cells.iter().find(|cell| cell.symbol() == "x").unwrap();
+        assert_eq!(
+            caret.style().bg,
+            Some(to_tui_color(app.theme.cursor_normal))
         );
     }
 

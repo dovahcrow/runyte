@@ -123,17 +123,29 @@ impl<'a> SelectionRoles<'a> {
             .is_some_and(|range| range.head == offset);
         if head && self.replacing {
             return if self.ranges[self.primary].head == offset {
-                TextRole::ReplaceCaret
+                if self.ranges.len() > 1 {
+                    TextRole::MultiReplaceCaret
+                } else {
+                    TextRole::ReplaceCaret
+                }
             } else {
                 TextRole::SecondaryCaret
             };
         }
         if self.select_mode && self.ranges[self.primary].head == offset {
-            return TextRole::PrimaryCaret;
+            return if self.ranges.len() > 1 {
+                TextRole::MultiPrimaryCaret
+            } else {
+                TextRole::PrimaryCaret
+            };
         }
         if head && !self.pristine_search {
             return if self.ranges[self.primary].head == offset {
-                TextRole::Caret
+                if self.ranges.len() > 1 {
+                    TextRole::MultiPrimaryCaret
+                } else {
+                    TextRole::Caret
+                }
             } else {
                 TextRole::SecondaryCaret
             };
@@ -674,6 +686,8 @@ pub enum TextRole {
     ReplaceCaret,
     Caret,
     SecondaryCaret,
+    MultiPrimaryCaret,
+    MultiReplaceCaret,
 }
 
 /// Owned status and prompt values for the bottom two rows.
@@ -1608,6 +1622,8 @@ impl App {
                         TextRole::Caret
                             | TextRole::PrimaryCaret
                             | TextRole::ReplaceCaret
+                            | TextRole::MultiPrimaryCaret
+                            | TextRole::MultiReplaceCaret
                             | TextRole::SecondaryCaret
                     ) {
                         role = head_role;
@@ -1874,6 +1890,8 @@ impl App {
                 TextRole::PrimaryCaret
                     | TextRole::ReplaceCaret
                     | TextRole::Caret
+                    | TextRole::MultiPrimaryCaret
+                    | TextRole::MultiReplaceCaret
                     | TextRole::SecondaryCaret
             ) {
                 runs.push(TextRun {
@@ -2212,15 +2230,27 @@ mod tests {
                                 let primary_head = selection.primary().head == offset;
                                 let expected = if replacing && head {
                                     if primary_head {
-                                        TextRole::ReplaceCaret
+                                        if ranges.len() > 1 {
+                                            TextRole::MultiReplaceCaret
+                                        } else {
+                                            TextRole::ReplaceCaret
+                                        }
                                     } else {
                                         TextRole::SecondaryCaret
                                     }
                                 } else if select_mode && selection.primary().head == offset {
-                                    TextRole::PrimaryCaret
+                                    if ranges.len() > 1 {
+                                        TextRole::MultiPrimaryCaret
+                                    } else {
+                                        TextRole::PrimaryCaret
+                                    }
                                 } else if head && !pristine {
                                     if primary_head {
-                                        TextRole::Caret
+                                        if ranges.len() > 1 {
+                                            TextRole::MultiPrimaryCaret
+                                        } else {
+                                            TextRole::Caret
+                                        }
                                     } else {
                                         TextRole::SecondaryCaret
                                     }
@@ -3235,7 +3265,7 @@ mod tests {
         assert!(row.runs.iter().any(|run| matches!(
             &run.kind,
             TextRunKind::Text {
-                role: TextRole::PrimaryCaret,
+                role: TextRole::MultiPrimaryCaret,
                 ..
             } if run.text == "t"
         )));
@@ -3263,7 +3293,7 @@ mod tests {
         assert!(row.runs.iter().any(|run| matches!(
             run.kind,
             TextRunKind::Text {
-                role: TextRole::PrimaryCaret,
+                role: TextRole::MultiPrimaryCaret,
                 ..
             }
         )));
@@ -3298,7 +3328,7 @@ mod tests {
                 .filter(|run| matches!(
                     &run.kind,
                     TextRunKind::Text {
-                        role: TextRole::PrimaryCaret,
+                        role: TextRole::MultiPrimaryCaret,
                         ..
                     } if run.text == "s"
                 ))
@@ -3360,7 +3390,7 @@ mod tests {
                 (TextRole::Selected, "at"),
                 (TextRole::Plain, " xx "),
                 (TextRole::PrimarySelected, "a"),
-                (TextRole::PrimaryCaret, "t"),
+                (TextRole::MultiPrimaryCaret, "t"),
             ]
         );
     }
@@ -3387,7 +3417,7 @@ mod tests {
                 matches!(
                     run.kind,
                     TextRunKind::Text {
-                        role: TextRole::ReplaceCaret,
+                        role: TextRole::MultiReplaceCaret,
                         ..
                     }
                 )
@@ -3456,7 +3486,7 @@ mod tests {
         assert!(row.runs.iter().any(|run| matches!(
             run.kind,
             TextRunKind::Text {
-                role: TextRole::PrimaryCaret,
+                role: TextRole::MultiPrimaryCaret,
                 ..
             }
         )));
@@ -3470,7 +3500,7 @@ mod tests {
         assert!(row.runs.iter().any(|run| matches!(
             &run.kind,
             TextRunKind::Text {
-                role: TextRole::PrimaryCaret,
+                role: TextRole::MultiPrimaryCaret,
                 ..
             } if run.text == "o"
         )));
@@ -3491,7 +3521,7 @@ mod tests {
         assert!(row.runs.iter().any(|run| matches!(
             run.kind,
             TextRunKind::Text {
-                role: TextRole::PrimaryCaret,
+                role: TextRole::MultiPrimaryCaret,
                 ..
             } if run.text == " "
         )));

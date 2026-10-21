@@ -39,11 +39,9 @@ Covered by `rotating_the_primary_keeps_a_search_result_drawn_as_matches` in
 `pristine_search_hides_secondary_carets_until_the_selection_moves` for the
 case where the presentation should still be dropped.
 
-Known limitation: an ordinary caret and the primary caret remain the same
-colour in Select mode, so in any multi-selection that is not a pristine
-search result the primary is told apart by its selection background alone.
-Giving the secondary caret its own colour is a theme question across all
-bundled palettes and was not decided here.
+Later cursor presentation gives the primary caret a red background with its character visible when
+more than one selection exists, while secondary carets retain their separate
+theme colour. Pristine search results still suppress secondary carets.
 
 ## Report
 
